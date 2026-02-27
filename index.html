@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Web Audio Mixer & Recorder with Live Reverb</title>
+    <title>Ultimate Web Audio Studio (Audacity Reverb Engine)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
         body {
@@ -19,31 +19,30 @@
         }
         .container {
             background-color: #2c3e50;
-            padding: 30px;
+            padding: 25px;
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 500px;
-            text-align: center;
+            max-width: 650px;
         }
-        h2 { margin-top: 0; color: #0fbcf9; }
+        h2 { margin-top: 0; color: #0fbcf9; text-align: center; }
         .section {
             margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 1px solid #485460;
-            text-align: left;
         }
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-        .controls-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin: 15px 0;
+        
+        /* Two Column Layout */
+        .grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
         }
-        .control-group { flex: 1; }
+        
         select, input[type="file"], input[type="range"] {
             width: 100%;
-            padding: 8px;
+            padding: 6px;
             margin-top: 5px;
             border-radius: 4px;
             border: 1px solid #718093;
@@ -62,33 +61,41 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        #startBtn { background-color: #05c46b; color: white; width: 45%; }
-        #stopBtn { background-color: #ff3f34; color: white; width: 45%; }
-        .download-btn { background-color: #3c40c6; color: white; }
+        #startBtn { background-color: #05c46b; color: white; width: 47%; }
+        #stopBtn { background-color: #ff3f34; color: white; width: 47%; }
+        .download-btn { background-color: #3c40c6; color: white; width: 100%; margin: 5px 0;}
         .download-btn:hover { background-color: #575fcf; }
         button:disabled { background-color: #808e9b; color: #d2dae2; cursor: not-allowed; }
         
-        /* Effect Sliders */
+        /* Audacity Reverb Panel */
         .effect-panel {
-            background-color: #1e272e;
+            background-color: #101418;
             padding: 15px;
             border-radius: 8px;
             margin-top: 10px;
             border: 1px solid #0fbcf9;
         }
-        .slider-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            font-size: 13px;
+        .slider-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
+            margin-top: 10px;
         }
-        .slider-row input[type="range"] { width: 60%; }
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            font-size: 12px;
+        }
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            color: #bdc3c7;
+        }
 
         /* Visualizer Screen */
         canvas {
             width: 100%;
-            height: 100px;
+            height: 80px;
             background-color: #101418;
             border-radius: 6px;
             margin-top: 15px;
@@ -96,64 +103,83 @@
             display: block;
         }
 
-        .preview-box {
-            background: #353b48;
-            padding: 10px;
-            border-radius: 8px;
-            margin-top: 15px;
-            display: none;
-        }
+        .preview-box { background: #353b48; padding: 10px; border-radius: 8px; margin-top: 15px; display: none; }
         .preview-box h4 { margin: 0 0 10px 0; font-size: 14px; color: #0fbcf9; }
-        
         .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 style="text-align: center;">Pro Studio Mixer</h2>
+    <h2>Pro Studio Mixer</h2>
     
-    <div class="section">
-        <label for="audioFile"><strong>1. Upload Backing Track:</strong></label>
-        <input type="file" id="audioFile" accept="audio/*">
-        <audio id="backingTrack" controls></audio>
-        
-        <div class="controls-row">
-            <div class="control-group">
-                <label for="bitrateSelect">Vocal Bitrate:</label>
+    <div class="section grid-2col">
+        <div>
+            <label><strong>1. Upload Backing Track:</strong></label>
+            <input type="file" id="audioFile" accept="audio/*">
+            <audio id="backingTrack" controls></audio>
+        </div>
+        <div>
+            <label><strong>Export Settings:</strong></label>
+            <div style="margin-bottom: 5px;">
                 <select id="bitrateSelect">
                     <option value="128000">128 kbps</option>
                     <option value="256000" selected>256 kbps (HQ)</option>
                     <option value="320000">320 kbps (Studio)</option>
                 </select>
             </div>
-            <div class="control-group">
-                <label for="formatSelect">Export Format:</label>
+            <div>
                 <select id="formatSelect">
-                    <option value="mp3">MP3</option>
-                    <option value="wav" selected>WAV</option>
-                    <option value="webm">WebM</option>
+                    <option value="mp3">MP3 Output</option>
+                    <option value="wav" selected>WAV Output (Uncompressed)</option>
+                    <option value="webm">WebM Output</option>
                 </select>
             </div>
         </div>
     </div>
 
     <div class="section">
-        <strong>🎤 Vocal Effects (Audacity Style)</strong>
-        <div class="effect-panel">
-            <label style="color: #0fbcf9; font-weight: bold;">
-                <input type="checkbox" id="reverbToggle"> Enable Live Reverb
-            </label>
-            <div style="margin-top: 15px;">
-                <div class="slider-row">
-                    <span>Room Size:</span>
-                    <input type="range" id="roomSize" min="0.1" max="3.0" step="0.1" value="1.5">
-                    <span id="roomVal">1.5s</span>
+        <label style="color: #0fbcf9; font-weight: bold; font-size: 16px;">
+            <input type="checkbox" id="reverbToggle" checked> 🎤 Enable Audacity-Style Reverb
+        </label>
+        
+        <div class="effect-panel" id="reverbControls">
+            <div class="slider-grid">
+                <div class="slider-group">
+                    <div class="slider-header"><span>Room Size (%)</span><span id="val_room">75</span></div>
+                    <input type="range" id="param_room" min="0" max="100" value="75">
                 </div>
-                <div class="slider-row">
-                    <span>Reverb (Wet) Mix:</span>
-                    <input type="range" id="wetMix" min="0" max="1" step="0.05" value="0.5">
-                    <span id="wetVal">50%</span>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Pre-delay (ms)</span><span id="val_predelay">10</span></div>
+                    <input type="range" id="param_predelay" min="0" max="200" value="10">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Reverberance (%)</span><span id="val_rev">50</span></div>
+                    <input type="range" id="param_rev" min="0" max="100" value="50">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Damping (%)</span><span id="val_damp">50</span></div>
+                    <input type="range" id="param_damp" min="0" max="100" value="50">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Tone Low (%)</span><span id="val_tonelow">100</span></div>
+                    <input type="range" id="param_tonelow" min="0" max="100" value="100">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Tone High (%)</span><span id="val_tonehigh">100</span></div>
+                    <input type="range" id="param_tonehigh" min="0" max="100" value="100">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Wet Gain (dB)</span><span id="val_wetgain">-1</span></div>
+                    <input type="range" id="param_wetgain" min="-20" max="10" value="-1" step="0.5">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Dry Gain (dB)</span><span id="val_drygain">-1</span></div>
+                    <input type="range" id="param_drygain" min="-20" max="10" value="-1" step="0.5">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header"><span>Stereo Width (%)</span><span id="val_width">100</span></div>
+                    <input type="range" id="param_width" min="0" max="100" value="100">
                 </div>
             </div>
         </div>
@@ -161,117 +187,152 @@
 
     <div class="section" style="text-align: center;">
         <button id="startBtn" disabled>Start Recording</button>
-        <button id="stopBtn" disabled>Stop Recording</button>
-        
+        <button id="stopBtn" disabled>Stop</button>
         <canvas id="visualizer"></canvas>
-
-        <div id="statusText" class="status">Please upload an audio file first.</div>
+        <div id="statusText" class="status">Please upload a backing track first.</div>
     </div>
 
     <div class="section preview-box" id="previewSection">
-        <h4>3. Preview & Download</h4>
-        
-        <div style="margin-bottom: 10px;">
-            <label><strong>Mixed Audio (Beat + Vocals):</strong></label>
-            <audio id="previewMixed" controls></audio>
-            <button class="download-btn" id="dlMixedBtn" style="width: 100%;">Download Mix</button>
-        </div>
-        
-        <div>
-            <label><strong>Vocal Track Only:</strong></label>
-            <audio id="previewMic" controls></audio>
-            <button class="download-btn" id="dlMicBtn" style="width: 100%;">Download Vocals</button>
+        <h4>Preview & Download Output</h4>
+        <div class="grid-2col">
+            <div>
+                <label style="font-size: 13px;"><strong>Mixed (Beat + Vocals)</strong></label>
+                <audio id="previewMixed" controls></audio>
+                <button class="download-btn" id="dlMixedBtn">Download Mix</button>
+            </div>
+            <div>
+                <label style="font-size: 13px;"><strong>Vocal Track Only</strong></label>
+                <audio id="previewMic" controls></audio>
+                <button class="download-btn" id="dlMicBtn">Download Vocals</button>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
-    // Elements
+    // System Elements
     const audioFileInput = document.getElementById('audioFile');
     const backingTrackEl = document.getElementById('backingTrack');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusText = document.getElementById('statusText');
     const previewSection = document.getElementById('previewSection');
-    
-    // Reverb Elements
-    const reverbToggle = document.getElementById('reverbToggle');
-    const roomSizeSlider = document.getElementById('roomSize');
-    const wetMixSlider = document.getElementById('wetMix');
-    const roomVal = document.getElementById('roomVal');
-    const wetVal = document.getElementById('wetVal');
-    
+
+    // Audacity Parameters Setup
+    const params = {
+        room: document.getElementById('param_room'),
+        predelay: document.getElementById('param_predelay'),
+        rev: document.getElementById('param_rev'),
+        damp: document.getElementById('param_damp'),
+        tonelow: document.getElementById('param_tonelow'),
+        tonehigh: document.getElementById('param_tonehigh'),
+        wetgain: document.getElementById('param_wetgain'),
+        drygain: document.getElementById('param_drygain'),
+        width: document.getElementById('param_width')
+    };
+
+    // Update UI Labels
+    Object.keys(params).forEach(key => {
+        params[key].addEventListener('input', (e) => {
+            document.getElementById('val_' + key).innerText = e.target.value;
+            applyRealtimeParams(); // Apply EQ & Gains smoothly
+        });
+        // Generate heavy Impulse Response ONLY when mouse is released to avoid audio glitching
+        params[key].addEventListener('change', generateIR); 
+    });
+
+    document.getElementById('reverbToggle').addEventListener('change', applyRealtimeParams);
+
     // Canvas Setup
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
-    
     drawFlatLine();
 
-    // Audio Graph Nodes
+    // Audio Context & DSP Nodes
     let audioCtx, mixedDest, vocalDest, vocalMixer;
     let trackSourceNode, micSourceNode, micStream;
-    let convolver, dryGain, wetGain;
+    let convolver, dryGain, wetGain, preDelay, toneLow, toneHigh;
     let mixedRecorder, micRecorder, analyser, animationId;
     let mixedChunks = [], micChunks = [];
     let finalMixedBlob = null, finalMicBlob = null;
 
-    // UI Listeners
     audioFileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            backingTrackEl.src = URL.createObjectURL(file);
+        if (e.target.files[0]) {
+            backingTrackEl.src = URL.createObjectURL(e.target.files[0]);
             startBtn.disabled = false;
             statusText.innerText = "Ready to record. Press Start.";
-            previewSection.style.display = 'none'; 
         }
     });
 
-    roomSizeSlider.addEventListener('input', (e) => {
-        roomVal.innerText = e.target.value + "s";
-        updateReverb();
-    });
-    
-    wetMixSlider.addEventListener('input', (e) => {
-        wetVal.innerText = Math.round(e.target.value * 100) + "%";
-        updateReverb();
-    });
-    
-    reverbToggle.addEventListener('change', updateReverb);
-
-    // Synthetic Impulse Response Generator for Reverb
-    function createImpulseResponse(duration) {
-        if (!audioCtx) return null;
-        const sampleRate = audioCtx.sampleRate;
-        const length = sampleRate * duration;
-        const impulse = audioCtx.createBuffer(2, length, sampleRate);
-        const left = impulse.getChannelData(0);
-        const right = impulse.getChannelData(1);
-
-        // Generates an exponential decay noise burst (classic algorithmic room simulation)
-        for (let i = 0; i < length; i++) {
-            const decay = Math.pow(1 - i / length, 2.5); // Decay curve
-            left[i] = (Math.random() * 2 - 1) * decay;
-            right[i] = (Math.random() * 2 - 1) * decay;
-        }
-        return impulse;
+    // DSP: Converts Decibels to Linear Gain
+    function dBToLinear(db) {
+        return Math.pow(10, db / 20);
     }
 
-    // Update Reverb Nodes Live
-    function updateReverb() {
+    // DSP: Generates the Audacity-Style Impulse Response Buffer
+    function generateIR() {
         if (!audioCtx || !convolver) return;
         
-        if (reverbToggle.checked) {
-            const mix = parseFloat(wetMixSlider.value);
-            const room = parseFloat(roomSizeSlider.value);
+        let sampleRate = audioCtx.sampleRate;
+        let rs = parseFloat(params.room.value) / 100;
+        let reverberance = parseFloat(params.rev.value) / 100;
+        let damping = parseFloat(params.damp.value) / 100;
+        let stereoWidth = parseFloat(params.width.value) / 100;
+
+        // Calculate IR Length (Audacity scales this up to several seconds)
+        let duration = 0.5 + (rs * 3) + (reverberance * 2);
+        let length = Math.floor(sampleRate * duration);
+        let buffer = audioCtx.createBuffer(2, length, sampleRate);
+        let left = buffer.getChannelData(0);
+        let right = buffer.getChannelData(1);
+
+        let lpL = 0, lpR = 0;
+        let dampFactor = damping * 0.95; 
+
+        for (let i = 0; i < length; i++) {
+            let t = i / sampleRate;
+            let decay = Math.exp(-t * (5 - reverberance * 4)); 
+
+            // White noise generation
+            let nL = Math.random() * 2 - 1;
+            let nR = Math.random() * 2 - 1;
+
+            // Apply Stereo Width
+            let mid = (nL + nR) / 2;
+            nL = mid + stereoWidth * (nL - mid);
+            nR = mid + stereoWidth * (nR - mid);
+
+            // Apply Damping (Lowpass Filter over time)
+            lpL = (lpL * dampFactor) + (nL * (1 - dampFactor));
+            lpR = (lpR * dampFactor) + (nR * (1 - dampFactor));
+
+            left[i] = lpL * decay;
+            right[i] = lpR * decay;
+        }
+        convolver.buffer = buffer;
+    }
+
+    // DSP: Applies EQ, Pre-delay, and Gains in real-time
+    function applyRealtimeParams() {
+        if (!audioCtx || !wetGain) return;
+        
+        if (document.getElementById('reverbToggle').checked) {
+            // Apply Pre-delay
+            preDelay.delayTime.setTargetAtTime(parseFloat(params.predelay.value) / 1000, audioCtx.currentTime, 0.01);
             
-            dryGain.gain.setTargetAtTime(1 - mix, audioCtx.currentTime, 0.05);
-            wetGain.gain.setTargetAtTime(mix, audioCtx.currentTime, 0.05);
-            convolver.buffer = createImpulseResponse(room);
+            // Apply Tone (EQ) - Maps 0-100% to -24dB to 0dB
+            toneLow.gain.setTargetAtTime((parseFloat(params.tonelow.value) - 100) * 0.24, audioCtx.currentTime, 0.01);
+            toneHigh.gain.setTargetAtTime((parseFloat(params.tonehigh.value) - 100) * 0.24, audioCtx.currentTime, 0.01);
+
+            // Apply Wet/Dry Gains
+            wetGain.gain.setTargetAtTime(dBToLinear(parseFloat(params.wetgain.value)), audioCtx.currentTime, 0.01);
+            dryGain.gain.setTargetAtTime(dBToLinear(parseFloat(params.drygain.value)), audioCtx.currentTime, 0.01);
         } else {
-            dryGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
-            wetGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+            // Bypass Reverb
+            wetGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
+            dryGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.01);
         }
     }
 
@@ -300,7 +361,6 @@
 
         const sliceWidth = canvas.width * 1.0 / bufferLength;
         let x = 0;
-
         for (let i = 0; i < bufferLength; i++) {
             const v = dataArray[i] / 128.0;
             const y = v * (canvas.height / 2);
@@ -312,7 +372,7 @@
         canvasCtx.stroke();
     }
 
-    // 2. Start Recording
+    // 2. Start Recording & DSP Setup
     startBtn.addEventListener('click', async () => {
         try {
             if (!audioCtx) {
@@ -322,51 +382,67 @@
                 vocalDest = audioCtx.createMediaStreamDestination();
                 vocalMixer = audioCtx.createGain();
 
-                // Route processed vocals to final mix and to standalone vocal track
                 vocalMixer.connect(mixedDest);
                 vocalMixer.connect(vocalDest);
 
-                // Reverb DSP Nodes
-                convolver = audioCtx.createConvolver();
+                // --- Audacity DSP Chain Build ---
                 dryGain = audioCtx.createGain();
                 wetGain = audioCtx.createGain();
-                wetGain.gain.value = 0; // Default off
+                
+                preDelay = audioCtx.createDelay(1.0); // Max 1 second delay buffer
+                convolver = audioCtx.createConvolver();
+                
+                toneLow = audioCtx.createBiquadFilter();
+                toneLow.type = 'lowshelf';
+                toneLow.frequency.value = 250; 
+                
+                toneHigh = audioCtx.createBiquadFilter();
+                toneHigh.type = 'highshelf';
+                toneHigh.frequency.value = 4000; 
 
-                // Connect DSP Chain to Vocal Mixer
-                dryGain.connect(vocalMixer);
-                convolver.connect(wetGain);
+                // Routing Wet Path: Mic -> PreDelay -> Convolver -> ToneLow -> ToneHigh -> WetGain -> Mixer
+                preDelay.connect(convolver);
+                convolver.connect(toneLow);
+                toneLow.connect(toneHigh);
+                toneHigh.connect(wetGain);
                 wetGain.connect(vocalMixer);
 
-                // Backing Track Routing
+                // Routing Dry Path: Mic -> DryGain -> Mixer
+                dryGain.connect(vocalMixer);
+
+                // Initialize DSP values
+                generateIR();
+                applyRealtimeParams();
+
+                // Routing Backing Track
                 trackSourceNode = audioCtx.createMediaElementSource(backingTrackEl);
                 trackSourceNode.connect(audioCtx.destination); 
                 trackSourceNode.connect(mixedDest); 
             }
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
+            // Hardware Mic Access (Raw)
             micStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, 
                 video: false 
             });
-            
             micSourceNode = audioCtx.createMediaStreamSource(micStream);
             
-            // Route Raw Mic to Dry and Wet (Reverb) paths
+            // Connect mic to both Wet and Dry paths
             micSourceNode.connect(dryGain);
-            micSourceNode.connect(convolver);
-            updateReverb(); // Apply initial settings
+            micSourceNode.connect(preDelay); 
 
-            // Visualizer Routing (Reads from vocalMixer to show effects)
+            // Visualizer Hook
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 2048;
             vocalMixer.connect(analyser);
             drawWaveform(); 
 
+            // Recorders Setup
             mixedChunks = []; micChunks = [];
             const bps = parseInt(document.getElementById('bitrateSelect').value);
             const options = { audioBitsPerSecond: bps };
 
-            // Recorders now capture from the correctly routed destinations
             mixedRecorder = new MediaRecorder(mixedDest.stream, options);
             micRecorder = new MediaRecorder(vocalDest.stream, options);
 
@@ -388,12 +464,12 @@
             backingTrackEl.currentTime = 0; backingTrackEl.play();
 
             startBtn.disabled = true; stopBtn.disabled = false; audioFileInput.disabled = true;
-            statusText.innerText = `🔴 Recording with DSP Enabled...`;
+            statusText.innerText = `🔴 Recording (Audacity DSP Enabled)...`;
             statusText.style.color = "#ff3f34";
 
         } catch (err) {
             console.error(err);
-            statusText.innerText = "Error accessing microphone: " + err.message;
+            statusText.innerText = "Error accessing mic: " + err.message;
         }
     });
 
@@ -407,22 +483,22 @@
         if (micStream) micStream.getTracks().forEach(track => track.stop());
 
         cancelAnimationFrame(animationId);
-        drawFlatLine(); // Reset canvas
+        drawFlatLine();
 
         startBtn.disabled = false; stopBtn.disabled = true; audioFileInput.disabled = false;
         statusText.innerText = "Recording complete! Listen to the previews below.";
         statusText.style.color = "#05c46b";
     });
 
-    // --- Audio Conversion Logic ---
-    document.getElementById('dlMixedBtn').addEventListener('click', () => processAndDownload(finalMixedBlob, 'Mixed_Track'));
-    document.getElementById('dlMicBtn').addEventListener('click', () => processAndDownload(finalMicBlob, 'Vocal_Only'));
+    // --- Format Conversion & Downloader ---
+    document.getElementById('dlMixedBtn').addEventListener('click', () => processAndDownload(finalMixedBlob, 'Mixed_Master'));
+    document.getElementById('dlMicBtn').addEventListener('click', () => processAndDownload(finalMicBlob, 'Vocal_Stem'));
 
     async function processAndDownload(webmBlob, filenameBase) {
         if (!webmBlob) return;
         
         const format = document.getElementById('formatSelect').value;
-        statusText.innerText = `Converting to ${format.toUpperCase()}... please wait.`;
+        statusText.innerText = `Exporting as ${format.toUpperCase()}... please wait.`;
         statusText.style.color = "#ffdd59";
         
         let outBlob = webmBlob;
@@ -452,7 +528,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         
-        statusText.innerText = "Download completed successfully!";
+        statusText.innerText = "Export completed successfully!";
         statusText.style.color = "#05c46b";
     }
 
@@ -487,7 +563,7 @@
 
     async function encodeMp3(audioBuffer) {
         if (!window.lamejs) {
-            alert("MP3 encoder library failed to load. Downloading as WAV instead.");
+            alert("MP3 library failed. Exporting as WAV.");
             return audioBufferToWav(audioBuffer);
         }
         const channels = audioBuffer.numberOfChannels;
