@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Web Audio Mixer & Recorder with Visualizer</title>
+    <title>Pro Web Audio Mixer & Recorder with Live Reverb</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
         body {
@@ -31,6 +31,7 @@
             margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 1px solid #485460;
+            text-align: left;
         }
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .controls-row {
@@ -38,10 +39,9 @@
             justify-content: space-between;
             gap: 10px;
             margin: 15px 0;
-            text-align: left;
         }
         .control-group { flex: 1; }
-        select, input[type="file"] {
+        select, input[type="file"], input[type="range"] {
             width: 100%;
             padding: 8px;
             margin-top: 5px;
@@ -62,12 +62,29 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        #startBtn { background-color: #05c46b; color: white; }
-        #stopBtn { background-color: #ff3f34; color: white; }
+        #startBtn { background-color: #05c46b; color: white; width: 45%; }
+        #stopBtn { background-color: #ff3f34; color: white; width: 45%; }
         .download-btn { background-color: #3c40c6; color: white; }
         .download-btn:hover { background-color: #575fcf; }
         button:disabled { background-color: #808e9b; color: #d2dae2; cursor: not-allowed; }
         
+        /* Effect Sliders */
+        .effect-panel {
+            background-color: #1e272e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            border: 1px solid #0fbcf9;
+        }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        .slider-row input[type="range"] { width: 60%; }
+
         /* Visualizer Screen */
         canvas {
             width: 100%;
@@ -88,13 +105,13 @@
         }
         .preview-box h4 { margin: 0 0 10px 0; font-size: 14px; color: #0fbcf9; }
         
-        .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; }
+        .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Pro Studio Mixer</h2>
+    <h2 style="text-align: center;">Pro Studio Mixer</h2>
     
     <div class="section">
         <label for="audioFile"><strong>1. Upload Backing Track:</strong></label>
@@ -105,27 +122,44 @@
             <div class="control-group">
                 <label for="bitrateSelect">Vocal Bitrate:</label>
                 <select id="bitrateSelect">
-                    <option value="32000">32 kbps</option>
-                    <option value="64000">64 kbps</option>
                     <option value="128000">128 kbps</option>
                     <option value="256000" selected>256 kbps (HQ)</option>
                     <option value="320000">320 kbps (Studio)</option>
-                    <option value="480000">480 kbps (Max)</option>
                 </select>
             </div>
             <div class="control-group">
                 <label for="formatSelect">Export Format:</label>
                 <select id="formatSelect">
                     <option value="mp3">MP3</option>
-                    <option value="wav" selected>WAV (Uncompressed)</option>
-                    <option value="webm">WebM (Native)</option>
+                    <option value="wav" selected>WAV</option>
+                    <option value="webm">WebM</option>
                 </select>
             </div>
         </div>
     </div>
 
     <div class="section">
-        <strong>2. Record Vocals:</strong><br>
+        <strong>🎤 Vocal Effects (Audacity Style)</strong>
+        <div class="effect-panel">
+            <label style="color: #0fbcf9; font-weight: bold;">
+                <input type="checkbox" id="reverbToggle"> Enable Live Reverb
+            </label>
+            <div style="margin-top: 15px;">
+                <div class="slider-row">
+                    <span>Room Size:</span>
+                    <input type="range" id="roomSize" min="0.1" max="3.0" step="0.1" value="1.5">
+                    <span id="roomVal">1.5s</span>
+                </div>
+                <div class="slider-row">
+                    <span>Reverb (Wet) Mix:</span>
+                    <input type="range" id="wetMix" min="0" max="1" step="0.05" value="0.5">
+                    <span id="wetVal">50%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section" style="text-align: center;">
         <button id="startBtn" disabled>Start Recording</button>
         <button id="stopBtn" disabled>Stop Recording</button>
         
@@ -137,16 +171,16 @@
     <div class="section preview-box" id="previewSection">
         <h4>3. Preview & Download</h4>
         
-        <div style="text-align: left; margin-bottom: 10px;">
+        <div style="margin-bottom: 10px;">
             <label><strong>Mixed Audio (Beat + Vocals):</strong></label>
             <audio id="previewMixed" controls></audio>
-            <button class="download-btn" id="dlMixedBtn">Download Mix</button>
+            <button class="download-btn" id="dlMixedBtn" style="width: 100%;">Download Mix</button>
         </div>
         
-        <div style="text-align: left;">
+        <div>
             <label><strong>Vocal Track Only:</strong></label>
             <audio id="previewMic" controls></audio>
-            <button class="download-btn" id="dlMicBtn">Download Vocals</button>
+            <button class="download-btn" id="dlMicBtn" style="width: 100%;">Download Vocals</button>
         </div>
     </div>
 </div>
@@ -158,41 +192,32 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusText = document.getElementById('statusText');
-    
     const previewSection = document.getElementById('previewSection');
-    const previewMixed = document.getElementById('previewMixed');
-    const previewMic = document.getElementById('previewMic');
     
-    const bitrateSelect = document.getElementById('bitrateSelect');
-    const formatSelect = document.getElementById('formatSelect');
+    // Reverb Elements
+    const reverbToggle = document.getElementById('reverbToggle');
+    const roomSizeSlider = document.getElementById('roomSize');
+    const wetMixSlider = document.getElementById('wetMix');
+    const roomVal = document.getElementById('roomVal');
+    const wetVal = document.getElementById('wetVal');
     
-    // Canvas Visualizer Setup
+    // Canvas Setup
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     
-    // Initial flat line on canvas
-    canvasCtx.fillStyle = '#101418';
-    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-    canvasCtx.lineWidth = 2;
-    canvasCtx.strokeStyle = '#0fbcf9';
-    canvasCtx.beginPath();
-    canvasCtx.moveTo(0, canvas.height / 2);
-    canvasCtx.lineTo(canvas.width, canvas.height / 2);
-    canvasCtx.stroke();
+    drawFlatLine();
 
-    // Audio Context & Nodes
-    let audioCtx, mixedDest, trackSourceNode, micSourceNode, micStream;
-    let mixedRecorder, micRecorder;
+    // Audio Graph Nodes
+    let audioCtx, mixedDest, vocalDest, vocalMixer;
+    let trackSourceNode, micSourceNode, micStream;
+    let convolver, dryGain, wetGain;
+    let mixedRecorder, micRecorder, analyser, animationId;
     let mixedChunks = [], micChunks = [];
-    let analyser, animationId;
-    
-    // Final Blobs for Preview/Download
-    let finalMixedBlob = null;
-    let finalMicBlob = null;
+    let finalMixedBlob = null, finalMicBlob = null;
 
-    // 1. Upload Handler
+    // UI Listeners
     audioFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -203,7 +228,64 @@
         }
     });
 
-    // Drawing the Waveform Loop
+    roomSizeSlider.addEventListener('input', (e) => {
+        roomVal.innerText = e.target.value + "s";
+        updateReverb();
+    });
+    
+    wetMixSlider.addEventListener('input', (e) => {
+        wetVal.innerText = Math.round(e.target.value * 100) + "%";
+        updateReverb();
+    });
+    
+    reverbToggle.addEventListener('change', updateReverb);
+
+    // Synthetic Impulse Response Generator for Reverb
+    function createImpulseResponse(duration) {
+        if (!audioCtx) return null;
+        const sampleRate = audioCtx.sampleRate;
+        const length = sampleRate * duration;
+        const impulse = audioCtx.createBuffer(2, length, sampleRate);
+        const left = impulse.getChannelData(0);
+        const right = impulse.getChannelData(1);
+
+        // Generates an exponential decay noise burst (classic algorithmic room simulation)
+        for (let i = 0; i < length; i++) {
+            const decay = Math.pow(1 - i / length, 2.5); // Decay curve
+            left[i] = (Math.random() * 2 - 1) * decay;
+            right[i] = (Math.random() * 2 - 1) * decay;
+        }
+        return impulse;
+    }
+
+    // Update Reverb Nodes Live
+    function updateReverb() {
+        if (!audioCtx || !convolver) return;
+        
+        if (reverbToggle.checked) {
+            const mix = parseFloat(wetMixSlider.value);
+            const room = parseFloat(roomSizeSlider.value);
+            
+            dryGain.gain.setTargetAtTime(1 - mix, audioCtx.currentTime, 0.05);
+            wetGain.gain.setTargetAtTime(mix, audioCtx.currentTime, 0.05);
+            convolver.buffer = createImpulseResponse(room);
+        } else {
+            dryGain.gain.setTargetAtTime(1, audioCtx.currentTime, 0.05);
+            wetGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        }
+    }
+
+    function drawFlatLine() {
+        canvasCtx.fillStyle = '#101418';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = '#0fbcf9';
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(0, canvas.height / 2);
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+    }
+
     function drawWaveform() {
         animationId = requestAnimationFrame(drawWaveform);
         const bufferLength = analyser.frequencyBinCount;
@@ -212,9 +294,8 @@
 
         canvasCtx.fillStyle = '#101418';
         canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
-        
         canvasCtx.lineWidth = 2;
-        canvasCtx.strokeStyle = '#0fbcf9'; // Blue waveform color
+        canvasCtx.strokeStyle = '#0fbcf9';
         canvasCtx.beginPath();
 
         const sliceWidth = canvas.width * 1.0 / bufferLength;
@@ -223,10 +304,8 @@
         for (let i = 0; i < bufferLength; i++) {
             const v = dataArray[i] / 128.0;
             const y = v * (canvas.height / 2);
-
             if (i === 0) canvasCtx.moveTo(x, y);
             else canvasCtx.lineTo(x, y);
-
             x += sliceWidth;
         }
         canvasCtx.lineTo(canvas.width, canvas.height / 2);
@@ -238,10 +317,30 @@
         try {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
                 mixedDest = audioCtx.createMediaStreamDestination();
+                vocalDest = audioCtx.createMediaStreamDestination();
+                vocalMixer = audioCtx.createGain();
+
+                // Route processed vocals to final mix and to standalone vocal track
+                vocalMixer.connect(mixedDest);
+                vocalMixer.connect(vocalDest);
+
+                // Reverb DSP Nodes
+                convolver = audioCtx.createConvolver();
+                dryGain = audioCtx.createGain();
+                wetGain = audioCtx.createGain();
+                wetGain.gain.value = 0; // Default off
+
+                // Connect DSP Chain to Vocal Mixer
+                dryGain.connect(vocalMixer);
+                convolver.connect(wetGain);
+                wetGain.connect(vocalMixer);
+
+                // Backing Track Routing
                 trackSourceNode = audioCtx.createMediaElementSource(backingTrackEl);
-                trackSourceNode.connect(audioCtx.destination);
-                trackSourceNode.connect(mixedDest);
+                trackSourceNode.connect(audioCtx.destination); 
+                trackSourceNode.connect(mixedDest); 
             }
             if (audioCtx.state === 'suspended') await audioCtx.resume();
 
@@ -251,34 +350,37 @@
             });
             
             micSourceNode = audioCtx.createMediaStreamSource(micStream);
-            micSourceNode.connect(mixedDest);
+            
+            // Route Raw Mic to Dry and Wet (Reverb) paths
+            micSourceNode.connect(dryGain);
+            micSourceNode.connect(convolver);
+            updateReverb(); // Apply initial settings
 
-            // Connect mic to Analyser for the Visualizer
+            // Visualizer Routing (Reads from vocalMixer to show effects)
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 2048;
-            micSourceNode.connect(analyser);
-            drawWaveform(); // Start drawing
+            vocalMixer.connect(analyser);
+            drawWaveform(); 
 
             mixedChunks = []; micChunks = [];
-            
-            // Apply User's Selected Bitrate
-            const bps = parseInt(bitrateSelect.value);
+            const bps = parseInt(document.getElementById('bitrateSelect').value);
             const options = { audioBitsPerSecond: bps };
 
+            // Recorders now capture from the correctly routed destinations
             mixedRecorder = new MediaRecorder(mixedDest.stream, options);
-            micRecorder = new MediaRecorder(micStream, options);
+            micRecorder = new MediaRecorder(vocalDest.stream, options);
 
             mixedRecorder.ondataavailable = e => { if (e.data.size > 0) mixedChunks.push(e.data); };
             micRecorder.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
 
             mixedRecorder.onstop = () => {
                 finalMixedBlob = new Blob(mixedChunks, { type: 'audio/webm' });
-                previewMixed.src = URL.createObjectURL(finalMixedBlob);
+                document.getElementById('previewMixed').src = URL.createObjectURL(finalMixedBlob);
             };
 
             micRecorder.onstop = () => {
                 finalMicBlob = new Blob(micChunks, { type: 'audio/webm' });
-                previewMic.src = URL.createObjectURL(finalMicBlob);
+                document.getElementById('previewMic').src = URL.createObjectURL(finalMicBlob);
                 previewSection.style.display = 'block'; 
             };
 
@@ -286,7 +388,7 @@
             backingTrackEl.currentTime = 0; backingTrackEl.play();
 
             startBtn.disabled = true; stopBtn.disabled = false; audioFileInput.disabled = true;
-            statusText.innerText = `🔴 Recording at ${bps/1000} kbps...`;
+            statusText.innerText = `🔴 Recording with DSP Enabled...`;
             statusText.style.color = "#ff3f34";
 
         } catch (err) {
@@ -304,22 +406,22 @@
         if (micSourceNode) micSourceNode.disconnect();
         if (micStream) micStream.getTracks().forEach(track => track.stop());
 
-        // Stop the visualizer animation
         cancelAnimationFrame(animationId);
+        drawFlatLine(); // Reset canvas
 
         startBtn.disabled = false; stopBtn.disabled = true; audioFileInput.disabled = false;
         statusText.innerText = "Recording complete! Listen to the previews below.";
         statusText.style.color = "#05c46b";
     });
 
-    // --- Audio Conversion & Download Logic ---
+    // --- Audio Conversion Logic ---
     document.getElementById('dlMixedBtn').addEventListener('click', () => processAndDownload(finalMixedBlob, 'Mixed_Track'));
     document.getElementById('dlMicBtn').addEventListener('click', () => processAndDownload(finalMicBlob, 'Vocal_Only'));
 
     async function processAndDownload(webmBlob, filenameBase) {
         if (!webmBlob) return;
         
-        const format = formatSelect.value;
+        const format = document.getElementById('formatSelect').value;
         statusText.innerText = `Converting to ${format.toUpperCase()}... please wait.`;
         statusText.style.color = "#ffdd59";
         
@@ -354,7 +456,6 @@
         statusText.style.color = "#05c46b";
     }
 
-    // WAV Encoder (Raw PCM Data)
     function audioBufferToWav(buffer) {
         let numOfChan = buffer.numberOfChannels,
             length = buffer.length * numOfChan * 2 + 44,
@@ -384,22 +485,17 @@
         function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
     }
 
-    // MP3 Encoder using lamejs
     async function encodeMp3(audioBuffer) {
         if (!window.lamejs) {
             alert("MP3 encoder library failed to load. Downloading as WAV instead.");
             return audioBufferToWav(audioBuffer);
         }
-        
         const channels = audioBuffer.numberOfChannels;
-        const sampleRate = audioBuffer.sampleRate;
-        const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192); 
+        const mp3encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, 192); 
         const mp3Data = [];
         const sampleBlockSize = 1152;
-        
         const left = audioBuffer.getChannelData(0);
         const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
-        
         const leftInt16 = new Int16Array(left.length);
         const rightInt16 = new Int16Array(right.length);
         
@@ -407,17 +503,14 @@
             leftInt16[i] = left[i] * 32767.5;
             rightInt16[i] = right[i] * 32767.5;
         }
-
         for (let i = 0; i < left.length; i += sampleBlockSize) {
             const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
             const rightChunk = rightInt16.subarray(i, i + sampleBlockSize);
             const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
             if (mp3buf.length > 0) mp3Data.push(mp3buf);
         }
-        
         const mp3buf = mp3encoder.flush();
         if (mp3buf.length > 0) mp3Data.push(mp3buf);
-        
         return new Blob(mp3Data, { type: 'audio/mp3' });
     }
 </script>
