@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Audio Mixer & Recorder</title>
+    <title>High-Quality Web Audio Mixer & Recorder</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -95,172 +95,183 @@
 </head>
 <body>
 
-    <div class="container">
-        <h2>Studio Mixer & Recorder</h2>
-        
-        <div class="section">
-            <label for="audioFile"><strong>1. Upload Backing Track:</strong></label>
-            <input type="file" id="audioFile" accept="audio/*">
-            <audio id="backingTrack" controls></audio>
-        </div>
-
-        <div class="section">
-            <strong>2. Record Vocals:</strong><br>
-            <button id="startBtn" disabled>Start Recording</button>
-            <button id="stopBtn" disabled>Stop Recording</button>
-            <div id="statusText" class="status">Please upload an audio file first.</div>
-        </div>
-
-        <div class="section download-links" id="downloadSection">
-            <strong>3. Downloads:</strong><br>
-            <a id="downloadMixed" href="#">Download Mixed Audio</a>
-            <a id="downloadMic" href="#">Download Mic Only</a>
-        </div>
+<div class="container">
+    <h2>Studio Mixer & Recorder</h2>
+    
+    <div class="section">
+        <label for="audioFile"><strong>1. Upload Backing Track:</strong></label>
+        <input type="file" id="audioFile" accept="audio/*">
+        <audio id="backingTrack" controls></audio>
     </div>
 
-    <script>
-        // UI Elements
-        const audioFileInput = document.getElementById('audioFile');
-        const backingTrackEl = document.getElementById('backingTrack');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const statusText = document.getElementById('statusText');
-        const downloadMixed = document.getElementById('downloadMixed');
-        const downloadMic = document.getElementById('downloadMic');
+    <div class="section">
+        <strong>2. Record Vocals:</strong><br>
+        <button id="startBtn" disabled>Start Recording</button>
+        <button id="stopBtn" disabled>Stop Recording</button>
+        <div id="statusText" class="status">Please upload an audio file first.</div>
+    </div>
 
-        // Audio Graph & Recorders
-        let audioCtx;
-        let mixedDest;
-        let trackSourceNode;
-        let micSourceNode;
-        let micStream;
-        
-        let mixedRecorder;
-        let micRecorder;
-        let mixedChunks = [];
-        let micChunks = [];
+    <div class="section download-links" id="downloadSection">
+        <strong>3. Downloads:</strong><br>
+        <a id="downloadMixed" href="#">Download Mixed Audio</a>
+        <a id="downloadMic" href="#">Download Mic Only</a>
+    </div>
+</div>
 
-        // 1. Handle File Upload
-        audioFileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const objectUrl = URL.createObjectURL(file);
-                backingTrackEl.src = objectUrl;
-                startBtn.disabled = false;
-                statusText.innerText = "Ready to record. Press Start.";
-                
-                // Hide download links if a new file is uploaded
-                downloadMixed.style.display = 'none';
-                downloadMic.style.display = 'none';
-            }
-        });
+<script>
+    // UI Elements
+    const audioFileInput = document.getElementById('audioFile');
+    const backingTrackEl = document.getElementById('backingTrack');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const statusText = document.getElementById('statusText');
+    const downloadMixed = document.getElementById('downloadMixed');
+    const downloadMic = document.getElementById('downloadMic');
 
-        // 2. Start Recording
-        startBtn.addEventListener('click', async () => {
-            try {
-                // Initialize AudioContext on user interaction
-                if (!audioCtx) {
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    
-                    // Create a destination node for the final mix
-                    mixedDest = audioCtx.createMediaStreamDestination();
-                    
-                    // Route the backing track into the Web Audio API
-                    trackSourceNode = audioCtx.createMediaElementSource(backingTrackEl);
-                    
-                    // Connect backing track to speakers (so you can hear it)
-                    trackSourceNode.connect(audioCtx.destination);
-                    
-                    // Connect backing track to the mix destination
-                    trackSourceNode.connect(mixedDest);
-                }
+    // Audio Graph & Recorders
+    let audioCtx;
+    let mixedDest;
+    let trackSourceNode;
+    let micSourceNode;
+    let micStream;
+    
+    let mixedRecorder;
+    let micRecorder;
+    let mixedChunks = [];
+    let micChunks = [];
 
-                // Resume context if suspended (browser auto-play policies)
-                if (audioCtx.state === 'suspended') {
-                    await audioCtx.resume();
-                }
-
-                // Request microphone access
-                micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                
-                // Route microphone into the Web Audio API
-                micSourceNode = audioCtx.createMediaStreamSource(micStream);
-                
-                // Connect microphone ONLY to the mix destination (not speakers, to prevent feedback loop)
-                micSourceNode.connect(mixedDest);
-
-                // Setup MediaRecorders
-                mixedChunks = [];
-                micChunks = [];
-                
-                // Recorder 1: Captures the mixed destination stream
-                mixedRecorder = new MediaRecorder(mixedDest.stream);
-                // Recorder 2: Captures the raw microphone stream
-                micRecorder = new MediaRecorder(micStream);
-
-                mixedRecorder.ondataavailable = e => { if (e.data.size > 0) mixedChunks.push(e.data); };
-                micRecorder.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
-
-                // Handle file generation on stop
-                mixedRecorder.onstop = () => {
-                    const blob = new Blob(mixedChunks, { type: 'audio/webm' });
-                    downloadMixed.href = URL.createObjectURL(blob);
-                    downloadMixed.download = 'Mixed_Track.webm';
-                    downloadMixed.style.display = 'inline-block';
-                };
-
-                micRecorder.onstop = () => {
-                    const blob = new Blob(micChunks, { type: 'audio/webm' });
-                    downloadMic.href = URL.createObjectURL(blob);
-                    downloadMic.download = 'Vocal_Only.webm';
-                    downloadMic.style.display = 'inline-block';
-                };
-
-                // Start Everything
-                mixedRecorder.start();
-                micRecorder.start();
-                
-                // Reset and play the backing track
-                backingTrackEl.currentTime = 0;
-                backingTrackEl.play();
-
-                // UI Updates
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                audioFileInput.disabled = true;
-                statusText.innerText = "🔴 Recording... Speak into your microphone.";
-                statusText.style.color = "#ff3f34";
-
-            } catch (err) {
-                console.error(err);
-                statusText.innerText = "Error accessing microphone: " + err.message;
-            }
-        });
-
-        // 3. Stop Recording
-        stopBtn.addEventListener('click', () => {
-            // Stop Recorders
-            if (mixedRecorder && mixedRecorder.state !== 'inactive') mixedRecorder.stop();
-            if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
+    // 1. Handle File Upload
+    audioFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const objectUrl = URL.createObjectURL(file);
+            backingTrackEl.src = objectUrl;
+            startBtn.disabled = false;
+            statusText.innerText = "Ready to record. Press Start.";
             
-            // Stop Backing Track
-            backingTrackEl.pause();
-            
-            // Disconnect Mic to prevent compounding audio nodes if restarted
-            if (micSourceNode) micSourceNode.disconnect();
-            
-            // Release microphone hardware
-            if (micStream) {
-                micStream.getTracks().forEach(track => track.stop());
+            // Hide download links if a new file is uploaded
+            downloadMixed.style.display = 'none';
+            downloadMic.style.display = 'none';
+        }
+    });
+
+    // 2. Start Recording (High Quality Settings Applied)
+    startBtn.addEventListener('click', async () => {
+        try {
+            // Initialize AudioContext on user interaction
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Create a destination node for the final mix
+                mixedDest = audioCtx.createMediaStreamDestination();
+                
+                // Route the backing track into the Web Audio API
+                trackSourceNode = audioCtx.createMediaElementSource(backingTrackEl);
+                
+                // Connect backing track to speakers (so you can hear it)
+                trackSourceNode.connect(audioCtx.destination);
+                
+                // Connect backing track to the mix destination
+                trackSourceNode.connect(mixedDest);
             }
+
+            // Resume context if suspended (browser auto-play policies)
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+
+            // Request microphone access (Raw Audio: No Echo Cancellation/Noise Suppression)
+            micStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                }, 
+                video: false 
+            });
+            
+            // Route microphone into the Web Audio API
+            micSourceNode = audioCtx.createMediaStreamSource(micStream);
+            
+            // Connect microphone ONLY to the mix destination (not speakers, to prevent feedback loop)
+            micSourceNode.connect(mixedDest);
+
+            // Setup MediaRecorders
+            mixedChunks = [];
+            micChunks = [];
+            
+            // Set Bitrate to 256 kbps
+            const options = { audioBitsPerSecond: 256000 };
+
+            // Recorder 1: Captures the mixed destination stream
+            mixedRecorder = new MediaRecorder(mixedDest.stream, options);
+            // Recorder 2: Captures the raw microphone stream
+            micRecorder = new MediaRecorder(micStream, options);
+
+            mixedRecorder.ondataavailable = e => { if (e.data.size > 0) mixedChunks.push(e.data); };
+            micRecorder.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
+
+            // Handle file generation on stop
+            mixedRecorder.onstop = () => {
+                const blob = new Blob(mixedChunks, { type: 'audio/webm' });
+                downloadMixed.href = URL.createObjectURL(blob);
+                downloadMixed.download = 'Mixed_Track_HQ.webm';
+                downloadMixed.style.display = 'inline-block';
+            };
+
+            micRecorder.onstop = () => {
+                const blob = new Blob(micChunks, { type: 'audio/webm' });
+                downloadMic.href = URL.createObjectURL(blob);
+                downloadMic.download = 'Vocal_Only_HQ.webm';
+                downloadMic.style.display = 'inline-block';
+            };
+
+            // Start Everything
+            mixedRecorder.start();
+            micRecorder.start();
+            
+            // Reset and play the backing track
+            backingTrackEl.currentTime = 0;
+            backingTrackEl.play();
 
             // UI Updates
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-            audioFileInput.disabled = false;
-            statusText.innerText = "Recording complete. Download your files below.";
-            statusText.style.color = "#05c46b";
-        });
-    </script>
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            audioFileInput.disabled = true;
+            statusText.innerText = "🔴 Recording in High Quality (256kbps)...";
+            statusText.style.color = "#ff3f34";
+
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = "Error accessing microphone: " + err.message;
+        }
+    });
+
+    // 3. Stop Recording
+    stopBtn.addEventListener('click', () => {
+        // Stop Recorders
+        if (mixedRecorder && mixedRecorder.state !== 'inactive') mixedRecorder.stop();
+        if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
+        
+        // Stop Backing Track
+        backingTrackEl.pause();
+        
+        // Disconnect Mic to prevent compounding audio nodes if restarted
+        if (micSourceNode) micSourceNode.disconnect();
+        
+        // Release microphone hardware
+        if (micStream) {
+            micStream.getTracks().forEach(track => track.stop());
+        }
+
+        // UI Updates
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        audioFileInput.disabled = false;
+        statusText.innerText = "Recording complete. Download your files below.";
+        statusText.style.color = "#05c46b";
+    });
+</script>
+
 </body>
 </html>
