@@ -23,7 +23,7 @@
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 700px;
+            max-width: 720px;
         }
         h2 { margin-top: 0; color: #0fbcf9; text-align: center; }
         .section {
@@ -34,6 +34,7 @@
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         
         .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
         
         select, input[type="file"], input[type="range"] {
             width: 100%;
@@ -194,17 +195,29 @@
             </div>
         </div>
 
-        <div class="grid-2col" style="margin-top: 15px;">
+        <!-- Export options with bitrate selector -->
+        <div class="grid-3col" style="margin-top: 15px; align-items: end;">
             <div>
-                <label>Export Format:</label>
+                <label>Format:</label>
                 <select id="formatSelect">
                     <option value="mp3">MP3</option>
                     <option value="wav" selected>WAV</option>
                 </select>
             </div>
-            <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                <button class="download-btn" id="dlMixedBtn">Download Mix (Selected Tracks)</button>
-                <button class="download-btn" id="dlMicBtn">Download Vocals Only</button>
+            <div>
+                <label>Bitrate (kbps):</label>
+                <select id="bitrateSelect">
+                    <option value="32">32</option>
+                    <option value="64">64</option>
+                    <option value="128">128</option>
+                    <option value="192" selected>192</option>
+                    <option value="256">256</option>
+                    <option value="320">320</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+                <button class="download-btn" id="dlMixedBtn">Download Mix</button>
+                <button class="download-btn" id="dlMicBtn">Download Vocals</button>
             </div>
         </div>
     </div>
@@ -219,6 +232,8 @@
     const timerDisplay = document.getElementById('timerDisplay');
     const postProcessingSection = document.getElementById('postProcessingSection');
     const previewBtn = document.getElementById('previewBtn');
+    const formatSelect = document.getElementById('formatSelect');
+    const bitrateSelect = document.getElementById('bitrateSelect');
 
     // UI Sliders for reverb
     const params = {
@@ -233,7 +248,7 @@
     let audioCtx;
     let backingTracks = []; // Array of {id, name, buffer, includeMix, applyFx, volume}
     let vocalBuffer = null;
-    let vocalVolume = 1.0; // New: vocal volume
+    let vocalVolume = 1.0;
     let micStream, micRecorder, micChunks = [];
     let analyser, animationId;
     let recordingStartTime, timerInterval;
@@ -257,7 +272,7 @@
     // 1. Upload Multiple Backing Tracks
     audioFilesInput.addEventListener('change', async (e) => {
         initAudioContext();
-        const files = Array.from(e.target.files).slice(0, 10); // Limit to 10
+        const files = Array.from(e.target.files).slice(0, 10);
         if (files.length > 0) {
             statusText.innerText = `Decoding ${files.length} track(s)... please wait.`;
             startBtn.disabled = true;
@@ -272,15 +287,13 @@
                     buffer: buffer,
                     includeMix: true,
                     applyFx: false,
-                    volume: 1.0  // default volume
+                    volume: 1.0
                 });
             }
             
             renderTrackList();
             startBtn.disabled = false;
             statusText.innerText = "Tracks ready. You can record Vocals or Preview Mix.";
-            
-            // Show processing section if tracks are loaded
             postProcessingSection.style.display = 'block';
         }
     });
@@ -362,21 +375,20 @@
             recordingStartTime = Date.now();
             timerInterval = setInterval(updateTimer, 100);
 
-            // If preview was playing, stop it
+            // Stop preview if playing
             if(isPreviewPlaying) previewBtn.click();
             
-            // 🔁 Play ALL backing tracks for monitoring (ignoring includeMix, but respecting volume)
-            previewSources = []; // reuse array to store monitoring sources
+            // Play ALL backing tracks for monitoring (respecting volume, ignoring includeMix)
+            previewSources = [];
             backingTracks.forEach(track => {
                 const src = audioCtx.createBufferSource();
                 src.buffer = track.buffer;
-                // Create gain node for volume
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.setValueAtTime(track.volume, audioCtx.currentTime);
                 src.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 src.start(0);
-                previewSources.push(src); // store to stop later
+                previewSources.push(src);
             });
 
         } catch (err) {
@@ -384,7 +396,7 @@
         }
     });
 
-    // Timer update function
+    // Timer update
     function updateTimer() {
         const elapsed = (Date.now() - recordingStartTime) / 1000;
         const mins = Math.floor(elapsed / 60);
@@ -397,11 +409,10 @@
     stopBtn.addEventListener('click', () => {
         if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
         
-        // Stop monitoring backing tracks
+        // Stop monitoring tracks
         previewSources.forEach(src => { try { src.stop(); } catch(e){} });
         previewSources = [];
 
-        // Stop timer
         clearInterval(timerInterval);
         timerDisplay.innerText = '00:00.0';
 
@@ -412,7 +423,7 @@
         statusText.innerText = "Processing recording...";
     });
 
-    // --- DSP LOGIC (unchanged, but ensure it uses the new volume params where needed) ---
+    // --- DSP LOGIC (unchanged) ---
     function dBToLinear(db) { return Math.pow(10, db / 20); }
 
     function createFXBus(context, outputNode) {
@@ -490,7 +501,7 @@
         if (isPreviewPlaying && liveDSP) applyDSPParams(liveDSP);
     });
 
-    // --- PREVIEW PLAYBACK (now includes volume) ---
+    // --- PREVIEW PLAYBACK (with volume) ---
     previewBtn.addEventListener('click', () => {
         if (!vocalBuffer && backingTracks.length === 0) return;
 
@@ -521,11 +532,11 @@
             previewSources.push(vSrc);
             
             vSrc.onended = () => { 
-                if (isPreviewPlaying) previewBtn.click(); // auto stop
+                if (isPreviewPlaying) previewBtn.click();
             };
         }
 
-        // Play Selected Backing Tracks with individual volume
+        // Play Selected Backing Tracks with volume
         backingTracks.forEach(track => {
             if(track.includeMix) {
                 const bSrc = audioCtx.createBufferSource();
@@ -546,12 +557,12 @@
         }
     });
 
-    // --- EXPORT (with volume) ---
+    // --- EXPORT (with bitrate) ---
     document.getElementById('dlMixedBtn').addEventListener('click', () => exportAudio('mix'));
     document.getElementById('dlMicBtn').addEventListener('click', () => exportAudio('vocal'));
 
     async function exportAudio(mode) {
-        if (isPreviewPlaying) previewBtn.click(); // Stop preview
+        if (isPreviewPlaying) previewBtn.click();
 
         let renderVocals = (mode === 'vocal' || (mode === 'mix' && document.getElementById('vocalMix').checked)) && vocalBuffer;
         let renderTracks = mode === 'mix' ? backingTracks.filter(t => t.includeMix) : [];
@@ -560,11 +571,11 @@
             alert("No tracks selected for export!"); return;
         }
 
-        const format = document.getElementById('formatSelect').value;
+        const format = formatSelect.value;
+        const bitrate = parseInt(bitrateSelect.value, 10); // for MP3
         statusText.innerText = `Rendering ${format.toUpperCase()}... please wait.`;
         statusText.style.color = "#ffdd59";
 
-        // Calculate max length
         let maxLen = renderVocals ? vocalBuffer.length : 0;
         renderTracks.forEach(t => { if(t.buffer.length > maxLen) maxLen = t.buffer.length; });
         maxLen += audioCtx.sampleRate * 3; // Reverb tail
@@ -599,8 +610,11 @@
         const renderedBuffer = await offlineCtx.startRendering();
 
         let finalBlob;
-        if (format === 'wav') finalBlob = audioBufferToWav(renderedBuffer);
-        else finalBlob = await encodeMp3(renderedBuffer);
+        if (format === 'wav') {
+            finalBlob = audioBufferToWav(renderedBuffer);
+        } else {
+            finalBlob = await encodeMp3(renderedBuffer, bitrate);
+        }
 
         const url = URL.createObjectURL(finalBlob);
         const a = document.createElement('a');
@@ -615,7 +629,7 @@
         statusText.style.color = "#05c46b";
     }
 
-    // --- Format Converters (unchanged) ---
+    // --- Format Converters (updated MP3 with bitrate) ---
     function audioBufferToWav(buffer) {
         let numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44,
             bufferArray = new ArrayBuffer(length), view = new DataView(bufferArray),
@@ -638,16 +652,20 @@
         return new Blob([bufferArray], {type: "audio/wav"});
     }
 
-    async function encodeMp3(audioBuffer) {
+    async function encodeMp3(audioBuffer, bitrate = 192) {
         if (!window.lamejs) return audioBufferToWav(audioBuffer);
         const channels = audioBuffer.numberOfChannels;
-        const mp3encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, 192); 
-        const mp3Data = []; const sampleBlockSize = 1152;
+        // Use selected bitrate (lamejs expects kbps as number)
+        const mp3encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, bitrate); 
+        const mp3Data = []; 
+        const sampleBlockSize = 1152;
         const left = audioBuffer.getChannelData(0);
         const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
-        const leftInt16 = new Int16Array(left.length); const rightInt16 = new Int16Array(right.length);
+        const leftInt16 = new Int16Array(left.length); 
+        const rightInt16 = new Int16Array(right.length);
         for (let i = 0; i < left.length; i++) {
-            leftInt16[i] = left[i] * 32767.5; rightInt16[i] = right[i] * 32767.5;
+            leftInt16[i] = left[i] * 32767.5; 
+            rightInt16[i] = right[i] * 32767.5;
         }
         for (let i = 0; i < left.length; i += sampleBlockSize) {
             const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
@@ -660,7 +678,7 @@
         return new Blob(mp3Data, { type: 'audio/mp3' });
     }
 
-    // --- Visualizer Drawing (unchanged) ---
+    // --- Visualizer Drawing ---
     function drawFlatLine() {
         canvasCtx.fillStyle = '#101418'; canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
         canvasCtx.lineWidth = 2; canvasCtx.strokeStyle = '#0fbcf9'; canvasCtx.beginPath();
