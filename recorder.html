@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Simple Audio Recorder</title>
+<style>
+body{
+    background:#111;
+    color:white;
+    text-align:center;
+    font-family:Arial;
+    padding-top:100px;
+}
+button{
+    padding:12px 20px;
+    margin:10px;
+    font-size:16px;
+    cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<h2>Audio Recorder</h2>
+
+<button onclick="startRec()">Start</button>
+<button onclick="pauseRec()">Pause / Resume</button>
+<button onclick="stopRec()">Stop</button>
+
+<br><br>
+<audio id="player" controls></audio>
+
+<script>
+let recorder;
+let chunks = [];
+let stream;
+
+async function startRec(){
+    try{
+        stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        recorder = new MediaRecorder(stream);
+
+        recorder.ondataavailable = e => chunks.push(e.data);
+
+        recorder.onstop = e => {
+            const blob = new Blob(chunks,{type:'audio/webm'});
+            const url = URL.createObjectURL(blob);
+            document.getElementById("player").src = url;
+            chunks = [];
+        };
+
+        recorder.start();
+        console.log("Recording started");
+    }catch(err){
+        alert("Microphone permission blocked or not supported.");
+        console.error(err);
+    }
+}
+
+function pauseRec(){
+    if(!recorder) return;
+
+    if(recorder.state === "recording"){
+        recorder.pause();
+        console.log("Paused");
+    }else if(recorder.state === "paused"){
+        recorder.resume();
+        console.log("Resumed");
+    }
+}
+
+function stopRec(){
+    if(!recorder) return;
+    recorder.stop();
+    stream.getTracks().forEach(track => track.stop());
+    console.log("Stopped");
+}
+</script>
+
+</body>
+</html>
