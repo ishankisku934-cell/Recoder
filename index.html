@@ -1,88 +1,128 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Mobile Audio Recorder</title>
-<style>
-body{
-    background:#000;
-    color:white;
-    text-align:center;
-    font-family:Arial;
-    padding-top:80px;
-}
-button{
-    padding:15px 25px;
-    margin:10px;
-    font-size:18px;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Audio Recorder</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #2c3e50;
+            margin: 0;
+        }
+        .recorder-box {
+            background-color: #ecf0f1;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            text-align: center;
+            width: 320px;
+        }
+        h2 {
+            color: #34495e;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 12px 24px;
+            margin: 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #startBtn {
+            background-color: #27ae60;
+            color: white;
+        }
+        #startBtn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #stopBtn {
+            background-color: #e74c3c;
+            color: white;
+        }
+        #stopBtn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        audio {
+            margin-top: 25px;
+            width: 100%;
+            outline: none;
+        }
+    </style>
 </head>
 <body>
 
-<h2>Mobile Recorder</h2>
+    <div class="recorder-box">
+        <h2>Audio Recorder</h2>
+        <button id="startBtn">Start Recording</button>
+        <button id="stopBtn" disabled>Stop</button>
+        
+        <br>
+        <audio id="audioPlayback" controls></audio>
+    </div>
 
-<button id="start">Start</button>
-<button id="pause">Pause</button>
-<button id="stop">Stop</button>
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
 
-<br><br>
-<audio id="audio" controls></audio>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const audioPlayback = document.getElementById('audioPlayback');
 
-<script>
-let recorder;
-let chunks = [];
-let stream;
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                audioChunks = []; // Clear previous recordings
+                
+                mediaRecorder.addEventListener("dataavailable", event => {
+                    audioChunks.push(event.data);
+                });
 
-document.getElementById("start").addEventListener("click", async () => {
+                mediaRecorder.addEventListener("stop", () => {
+                    // Create audio blob and set it to the audio element
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    audioPlayback.src = audioUrl;
+                });
 
-    if(!navigator.mediaDevices){
-        alert("Browser not supported");
-        return;
-    }
+                mediaRecorder.start();
+                
+                // UI updates
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                startBtn.innerText = "Recording...";
 
-    try{
-        stream = await navigator.mediaDevices.getUserMedia({audio:true});
-        recorder = new MediaRecorder(stream);
-
-        recorder.ondataavailable = e => {
-            if(e.data.size > 0){
-                chunks.push(e.data);
+            } catch (err) {
+                alert("Microphone access is required to record audio. Error: " + err.message);
             }
-        };
+        });
 
-        recorder.onstop = () => {
-            const blob = new Blob(chunks,{type:'audio/webm'});
-            const url = URL.createObjectURL(blob);
-            document.getElementById("audio").src = url;
-            chunks = [];
-        };
-
-        recorder.start();
-
-    }catch(err){
-        alert("Permission denied or error");
-        console.error(err);
-    }
-});
-
-document.getElementById("pause").addEventListener("click", () => {
-    if(!recorder) return;
-
-    if(recorder.state === "recording"){
-        recorder.pause();
-    }else if(recorder.state === "paused"){
-        recorder.resume();
-    }
-});
-
-document.getElementById("stop").addEventListener("click", () => {
-    if(!recorder) return;
-
-    recorder.stop();
-    stream.getTracks().forEach(track => track.stop());
-});
-</script>
+        stopBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+                
+                // Stop all microphone tracks to turn off the recording indicator
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                
+                // UI updates
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                startBtn.innerText = "Start Recording";
+            }
+        });
+    </script>
 
 </body>
 </html>
