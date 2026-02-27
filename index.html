@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Web Audio Mixer & Recorder</title>
+    <title>Pro Web Audio Mixer & Recorder with Visualizer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
         body {
@@ -49,6 +49,7 @@
             border: 1px solid #718093;
             background-color: #353b48;
             color: white;
+            box-sizing: border-box;
         }
         audio { width: 100%; margin-top: 10px; height: 35px; outline: none; }
         button {
@@ -67,6 +68,17 @@
         .download-btn:hover { background-color: #575fcf; }
         button:disabled { background-color: #808e9b; color: #d2dae2; cursor: not-allowed; }
         
+        /* Visualizer Screen */
+        canvas {
+            width: 100%;
+            height: 100px;
+            background-color: #101418;
+            border-radius: 6px;
+            margin-top: 15px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+            display: block;
+        }
+
         .preview-box {
             background: #353b48;
             padding: 10px;
@@ -116,6 +128,9 @@
         <strong>2. Record Vocals:</strong><br>
         <button id="startBtn" disabled>Start Recording</button>
         <button id="stopBtn" disabled>Stop Recording</button>
+        
+        <canvas id="visualizer"></canvas>
+
         <div id="statusText" class="status">Please upload an audio file first.</div>
     </div>
 
@@ -151,10 +166,27 @@
     const bitrateSelect = document.getElementById('bitrateSelect');
     const formatSelect = document.getElementById('formatSelect');
     
+    // Canvas Visualizer Setup
+    const canvas = document.getElementById('visualizer');
+    const canvasCtx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    // Initial flat line on canvas
+    canvasCtx.fillStyle = '#101418';
+    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+    canvasCtx.lineWidth = 2;
+    canvasCtx.strokeStyle = '#0fbcf9';
+    canvasCtx.beginPath();
+    canvasCtx.moveTo(0, canvas.height / 2);
+    canvasCtx.lineTo(canvas.width, canvas.height / 2);
+    canvasCtx.stroke();
+
     // Audio Context & Nodes
     let audioCtx, mixedDest, trackSourceNode, micSourceNode, micStream;
     let mixedRecorder, micRecorder;
     let mixedChunks = [], micChunks = [];
+    let analyser, animationId;
     
     // Final Blobs for Preview/Download
     let finalMixedBlob = null;
@@ -167,9 +199,39 @@
             backingTrackEl.src = URL.createObjectURL(file);
             startBtn.disabled = false;
             statusText.innerText = "Ready to record. Press Start.";
-            previewSection.style.display = 'none'; // Hide previews on new upload
+            previewSection.style.display = 'none'; 
         }
     });
+
+    // Drawing the Waveform Loop
+    function drawWaveform() {
+        animationId = requestAnimationFrame(drawWaveform);
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(dataArray);
+
+        canvasCtx.fillStyle = '#101418';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = '#0fbcf9'; // Blue waveform color
+        canvasCtx.beginPath();
+
+        const sliceWidth = canvas.width * 1.0 / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = v * (canvas.height / 2);
+
+            if (i === 0) canvasCtx.moveTo(x, y);
+            else canvasCtx.lineTo(x, y);
+
+            x += sliceWidth;
+        }
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+    }
 
     // 2. Start Recording
     startBtn.addEventListener('click', async () => {
@@ -191,6 +253,12 @@
             micSourceNode = audioCtx.createMediaStreamSource(micStream);
             micSourceNode.connect(mixedDest);
 
+            // Connect mic to Analyser for the Visualizer
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+            micSourceNode.connect(analyser);
+            drawWaveform(); // Start drawing
+
             mixedChunks = []; micChunks = [];
             
             // Apply User's Selected Bitrate
@@ -211,7 +279,7 @@
             micRecorder.onstop = () => {
                 finalMicBlob = new Blob(micChunks, { type: 'audio/webm' });
                 previewMic.src = URL.createObjectURL(finalMicBlob);
-                previewSection.style.display = 'block'; // Show preview area
+                previewSection.style.display = 'block'; 
             };
 
             mixedRecorder.start(); micRecorder.start();
@@ -236,13 +304,15 @@
         if (micSourceNode) micSourceNode.disconnect();
         if (micStream) micStream.getTracks().forEach(track => track.stop());
 
+        // Stop the visualizer animation
+        cancelAnimationFrame(animationId);
+
         startBtn.disabled = false; stopBtn.disabled = true; audioFileInput.disabled = false;
         statusText.innerText = "Recording complete! Listen to the previews below.";
         statusText.style.color = "#05c46b";
     });
 
     // --- Audio Conversion & Download Logic ---
-
     document.getElementById('dlMixedBtn').addEventListener('click', () => processAndDownload(finalMixedBlob, 'Mixed_Track'));
     document.getElementById('dlMicBtn').addEventListener('click', () => processAndDownload(finalMicBlob, 'Vocal_Only'));
 
@@ -292,13 +362,10 @@
             view = new DataView(bufferArray),
             channels = [], i, sample, offset = 0, pos = 0;
 
-        // RIFF chunk descriptor
         setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
-        // fmt sub-chunk
         setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
         setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
         setUint16(numOfChan * 2); setUint16(16);
-        // data sub-chunk
         setUint32(0x61746164); setUint32(length - pos - 4);
 
         for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
@@ -326,7 +393,7 @@
         
         const channels = audioBuffer.numberOfChannels;
         const sampleRate = audioBuffer.sampleRate;
-        const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192); // 192kbps MP3 Output
+        const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192); 
         const mp3Data = [];
         const sampleBlockSize = 1152;
         
