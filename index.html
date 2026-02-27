@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pro Multi-Track Studio (Audacity Style)</title>
+    <title>Post-Processing Web Audio Studio (Audacity Style)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
         body {
@@ -23,7 +23,7 @@
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 700px;
+            max-width: 650px;
         }
         h2 { margin-top: 0; color: #0fbcf9; text-align: center; }
         .section {
@@ -35,7 +35,7 @@
         
         .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         
-        input[type="file"], input[type="range"], select {
+        select, input[type="file"], input[type="range"] {
             width: 100%;
             padding: 6px;
             margin-top: 5px;
@@ -45,7 +45,7 @@
             color: white;
             box-sizing: border-box;
         }
-        
+        audio { width: 100%; margin-top: 10px; height: 35px; outline: none; }
         button {
             padding: 10px 15px;
             margin: 5px;
@@ -64,33 +64,8 @@
         .download-btn:hover { background-color: #575fcf; }
         button:disabled { background-color: #808e9b; color: #d2dae2; cursor: not-allowed; }
         
-        /* Track List Styles */
-        .track-item {
-            background-color: #353b48;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-        }
-        .track-controls { display: flex; gap: 15px; }
-        .track-controls label { cursor: pointer; display: flex; align-items: center; gap: 5px; }
-        
-        .vocal-track-ui {
-            background-color: #0fbcf922;
-            border: 1px solid #0fbcf9;
-            padding: 12px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* Effect Panel */
         #postProcessingSection { display: none; }
+        
         .effect-panel {
             background-color: #101418;
             padding: 15px;
@@ -118,45 +93,54 @@
         }
 
         .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; text-align: center; }
+
+        .track-list { margin-top: 15px; }
+        .track-item { 
+            background: #353b48; padding: 10px; margin-bottom: 8px; 
+            border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .track-name { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+        .track-controls { display: flex; gap: 10px; font-size: 13px; }
+        .checkbox-label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #0fbcf9; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Multi-Track Studio</h2>
+    <h2>Post-Processing Studio</h2>
     
     <div class="section">
-        <label><strong>1. Upload Audio Tracks (Up to 10):</strong></label>
+        <label><strong>1. Upload Backing Tracks (Up to 10):</strong></label>
         <input type="file" id="audioFiles" accept="audio/*" multiple>
-        <div id="trackListContainer"></div>
+        <div id="trackListContainer" class="track-list"></div>
     </div>
 
     <div class="section" style="text-align: center;">
-        <div style="text-align: left; margin-bottom: 10px;"><strong>2. Record Vocals:</strong></div>
+        <div style="text-align: left; margin-bottom: 10px;"><strong>2. Record Raw Vocals:</strong></div>
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop</button>
         <canvas id="visualizer"></canvas>
-        <div id="statusText" class="status">Ready. You can record with or without uploaded files.</div>
+        <div id="statusText" class="status">Ready. Press Start to record Vocals.</div>
     </div>
 
     <div class="section" id="postProcessingSection">
-        <div style="font-size: 18px; font-weight: bold; color: #0fbcf9; margin-bottom: 15px; border-bottom: 1px solid #485460; padding-bottom: 5px;">
-            3. Post-Processing & Mixdown
+        <div style="font-size: 18px; font-weight: bold; color: #0fbcf9; margin-bottom: 10px; border-bottom: 1px solid #485460; padding-bottom: 5px;">
+            3. Post-Processing & Export
         </div>
         
-        <div class="vocal-track-ui">
-            <strong>🎤 Recorded Vocal</strong>
+        <div class="track-item" style="background: #2f3640; border: 1px solid #e1b12c;">
+            <div class="track-name" style="color: #e1b12c;">🎤 Recorded Vocal Track</div>
             <div class="track-controls">
-                <label><input type="checkbox" id="vocalMixToggle" checked> Include in Mix</label>
-                <label><input type="checkbox" id="vocalFXToggle" checked> Apply FX (Reverb)</label>
+                <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalMix" checked> In Mix</label>
+                <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalFx" checked> Apply FX</label>
             </div>
         </div>
 
-        <button class="action-btn" id="previewBtn">▶ Play / Pause Selected Mix</button>
+        <button class="action-btn" id="previewBtn">▶ Play / Pause Preview</button>
         
         <div class="effect-panel">
             <label style="color: #0fbcf9; font-weight: bold;">
-                <input type="checkbox" id="reverbToggle" checked> Enable Main Reverb Engine
+                <input type="checkbox" id="reverbToggle" checked> Enable Reverb Engine (For Selected Tracks)
             </label>
             <div class="slider-grid">
                 <div class="slider-group">
@@ -207,14 +191,15 @@
                 </select>
             </div>
             <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-                <button class="download-btn" id="dlMixedBtn">Download Final Mix</button>
+                <button class="download-btn" id="dlMixedBtn">Download Mix (Selected Tracks)</button>
+                <button class="download-btn" id="dlMicBtn">Download Vocals Only</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    const audioFileInput = document.getElementById('audioFiles');
+    const audioFilesInput = document.getElementById('audioFiles');
     const trackListContainer = document.getElementById('trackListContainer');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
@@ -222,7 +207,7 @@
     const postProcessingSection = document.getElementById('postProcessingSection');
     const previewBtn = document.getElementById('previewBtn');
 
-    // UI Sliders for FX
+    // UI Sliders
     const params = {
         room: document.getElementById('param_room'), predelay: document.getElementById('param_predelay'),
         rev: document.getElementById('param_rev'), damp: document.getElementById('param_damp'),
@@ -231,16 +216,15 @@
         width: document.getElementById('param_width')
     };
 
-    // System Audio Variables
-    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    let uploadedTracks = []; // Stores { id, name, buffer, includeInMix, applyFX }
+    // System Variables
+    let audioCtx;
+    let backingTracks = []; // Array to hold multiple files
     let vocalBuffer = null;
     let micStream, micRecorder, micChunks = [];
     let analyser, animationId;
     
-    // Playback Tracking
     let isPreviewPlaying = false;
-    let activeSources = [];
+    let previewSources = [];
     let liveDSP = null;
 
     // Canvas Setup
@@ -249,70 +233,68 @@
     canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
     drawFlatLine();
 
-    // 1. Upload Multiple Files & Render UI
-    audioFileInput.addEventListener('change', async (e) => {
+    // Context Initializer
+    function initAudioContext() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    // 1. Upload Multiple Backing Tracks
+    audioFilesInput.addEventListener('change', async (e) => {
+        initAudioContext();
         const files = Array.from(e.target.files).slice(0, 10); // Limit to 10
-        if (files.length === 0) return;
-
-        statusText.innerText = "Decoding audio files... please wait.";
-        startBtn.disabled = true; // Briefly disable to prevent error during decode
-        
-        if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const arrayBuffer = await file.arrayBuffer();
-            const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+        if (files.length > 0) {
+            statusText.innerText = `Decoding ${files.length} track(s)... please wait.`;
+            startBtn.disabled = true;
             
-            uploadedTracks.push({
-                id: `track_${Date.now()}_${i}`,
-                name: file.name,
-                buffer: buffer,
-                includeInMix: true, // Default to true
-                applyFX: false      // Default beat FX to false
-            });
+            for (let i = 0; i < files.length; i++) {
+                const arrayBuffer = await files[i].arrayBuffer();
+                const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+                
+                // Check if track name already exists, if not add it
+                backingTracks.push({
+                    id: Date.now() + i,
+                    name: files[i].name,
+                    buffer: buffer,
+                    includeMix: true,
+                    applyFx: false // By default, backing tracks have no FX
+                });
+            }
+            
+            renderTrackList();
+            startBtn.disabled = false;
+            statusText.innerText = "Tracks ready. You can record Vocals or Preview Mix.";
+            
+            // Show processing section if tracks are loaded
+            postProcessingSection.style.display = 'block';
         }
-        
-        renderTrackList();
-        audioFileInput.value = ""; // Reset input so same file can be added if needed
-        startBtn.disabled = false;
-        statusText.innerText = `${uploadedTracks.length} track(s) loaded. Ready to record.`;
     });
 
-    // Render Track Checkboxes
+    // Render Track UI Checkboxes
     function renderTrackList() {
         trackListContainer.innerHTML = '';
-        uploadedTracks.forEach((track, index) => {
+        backingTracks.forEach((track, index) => {
             const div = document.createElement('div');
             div.className = 'track-item';
             div.innerHTML = `
-                <div style="max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    🎵 ${track.name}
-                </div>
+                <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
                 <div class="track-controls">
-                    <label><input type="checkbox" id="mix_${track.id}" ${track.includeInMix ? 'checked' : ''}> Mix</label>
-                    <label><input type="checkbox" id="fx_${track.id}" ${track.applyFX ? 'checked' : ''}> FX</label>
+                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
+                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
+                    <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
                 </div>
             `;
             trackListContainer.appendChild(div);
-
-            // Add Event Listeners to Checkboxes
-            document.getElementById(`mix_${track.id}`).addEventListener('change', (e) => {
-                track.includeInMix = e.target.checked;
-            });
-            document.getElementById(`fx_${track.id}`).addEventListener('change', (e) => {
-                track.applyFX = e.target.checked;
-                if(isPreviewPlaying) applyDSPParams(liveDSP); // Instant update
-            });
         });
     }
+
+    window.updateTrack = (index, prop, value) => { backingTracks[index][prop] = value; };
+    window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); };
 
     // 2. Start Raw Recording
     startBtn.addEventListener('click', async () => {
         try {
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-            
-            // hardware mic access
+            initAudioContext();
             micStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, 
                 video: false 
@@ -334,28 +316,30 @@
                 vocalBuffer = await audioCtx.decodeAudioData(arrayBuffer); 
                 
                 postProcessingSection.style.display = 'block'; 
-                statusText.innerText = "Vocal recorded! Select tracks for mix/FX and play preview.";
+                statusText.innerText = "Vocal saved! Select FX and Mix options below.";
                 statusText.style.color = "#0fbcf9";
                 postProcessingSection.scrollIntoView({ behavior: "smooth" });
             };
 
             micRecorder.start();
+            startBtn.disabled = true; stopBtn.disabled = false; audioFilesInput.disabled = true;
+            statusText.innerText = `🔴 Recording Raw Vocals...`;
+            statusText.style.color = "#ff3f34";
+
+            // If preview was playing, stop it
+            if(isPreviewPlaying) previewBtn.click();
             
-            // Play selected uploaded tracks directly to speakers for monitoring while singing
-            activeSources = [];
-            uploadedTracks.forEach(track => {
-                if (track.includeInMix) {
-                    let src = audioCtx.createBufferSource();
+            // Play included tracks for singer
+            previewSources = [];
+            backingTracks.forEach(track => {
+                if(track.includeMix) {
+                    const src = audioCtx.createBufferSource();
                     src.buffer = track.buffer;
                     src.connect(audioCtx.destination);
                     src.start(0);
-                    activeSources.push(src);
+                    previewSources.push(src);
                 }
             });
-
-            startBtn.disabled = true; stopBtn.disabled = false;
-            statusText.innerText = `🔴 Recording Raw Vocals...`;
-            statusText.style.color = "#ff3f34";
 
         } catch (err) {
             statusText.innerText = "Error accessing mic: " + err.message;
@@ -365,33 +349,23 @@
     // 3. Stop Recording
     stopBtn.addEventListener('click', () => {
         if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
-        if (micStream) micStream.getTracks().forEach(track => track.stop());
         
-        // Stop monitor tracks
-        activeSources.forEach(src => src.stop());
-        activeSources = [];
+        // Stop playing backing tracks
+        previewSources.forEach(src => { try { src.stop(); } catch(e){} });
+        previewSources = [];
 
+        if (micStream) micStream.getTracks().forEach(track => track.stop());
         cancelAnimationFrame(animationId);
         drawFlatLine();
-        startBtn.disabled = false; stopBtn.disabled = true;
+        startBtn.disabled = false; stopBtn.disabled = true; audioFilesInput.disabled = false;
         statusText.innerText = "Processing recording...";
     });
 
-    // --- DSP LOGIC (Shared Engine) ---
+    // --- DSP LOGIC ---
     function dBToLinear(db) { return Math.pow(10, db / 20); }
 
-    function buildSharedDSP(context, destination) {
-        // Master Output
-        const masterMix = context.createGain();
-        masterMix.connect(destination);
-
-        // Input 1: Clean Path (Bypasses Effects)
-        const cleanInput = context.createGain();
-        cleanInput.connect(masterMix);
-
-        // Input 2: FX Path (Goes through Reverb & EQ)
-        const fxInput = context.createGain();
-        
+    function createFXBus(context, outputNode) {
+        const busInput = context.createGain();
         const dryGain = context.createGain();
         const wetGain = context.createGain();
         const preDelay = context.createDelay(1.0);
@@ -399,19 +373,18 @@
         const toneLow = context.createBiquadFilter(); toneLow.type = 'lowshelf'; toneLow.frequency.value = 250;
         const toneHigh = context.createBiquadFilter(); toneHigh.type = 'highshelf'; toneHigh.frequency.value = 4000;
 
-        // Routing FX Chain
-        fxInput.connect(dryGain);
-        fxInput.connect(preDelay);
+        busInput.connect(dryGain);
+        busInput.connect(preDelay);
         preDelay.connect(convolver);
         convolver.connect(toneLow);
         toneLow.connect(toneHigh);
         toneHigh.connect(wetGain);
         
-        dryGain.connect(masterMix);
-        wetGain.connect(masterMix);
+        dryGain.connect(outputNode);
+        wetGain.connect(outputNode);
 
-        const dspNodes = { cleanInput, fxInput, dryGain, wetGain, preDelay, convolver, toneLow, toneHigh, context };
-        applyDSPParams(dspNodes); 
+        const dspNodes = { input: busInput, dryGain, wetGain, preDelay, convolver, toneLow, toneHigh, context };
+        applyDSPParams(dspNodes);
         return dspNodes;
     }
 
@@ -426,7 +399,6 @@
             dsp.wetGain.gain.setValueAtTime(dBToLinear(parseFloat(params.wetgain.value)), time);
             dsp.dryGain.gain.setValueAtTime(dBToLinear(parseFloat(params.drygain.value)), time);
             
-            // Dynamic Impulse Response
             let sr = dsp.context.sampleRate;
             let rs = parseFloat(params.room.value) / 100;
             let rev = parseFloat(params.rev.value) / 100;
@@ -455,125 +427,114 @@
         }
     }
 
-    // UI Listeners for Realtime Update
     Object.keys(params).forEach(key => {
         params[key].addEventListener('input', (e) => {
             document.getElementById('val_' + key).innerText = e.target.value;
         });
         params[key].addEventListener('change', () => {
-            if (isPreviewPlaying) applyDSPParams(liveDSP); 
+            if (isPreviewPlaying && liveDSP) applyDSPParams(liveDSP);
         });
     });
     document.getElementById('reverbToggle').addEventListener('change', () => {
-        if (isPreviewPlaying) applyDSPParams(liveDSP);
+        if (isPreviewPlaying && liveDSP) applyDSPParams(liveDSP);
     });
 
     // --- PREVIEW PLAYBACK ---
     previewBtn.addEventListener('click', () => {
+        if (!vocalBuffer && backingTracks.length === 0) return;
+
         if (isPreviewPlaying) {
-            activeSources.forEach(src => src.stop());
-            activeSources = [];
+            previewSources.forEach(src => { try { src.stop(); } catch(e){} });
+            previewSources = [];
             isPreviewPlaying = false;
-            previewBtn.innerText = "▶ Play Selected Mix";
+            previewBtn.innerText = "▶ Play / Pause Preview";
             return;
         }
 
-        liveDSP = buildSharedDSP(audioCtx, audioCtx.destination);
-        activeSources = [];
-        let maxDuration = 0;
-
-        // Route Uploaded Tracks based on Checkboxes
-        uploadedTracks.forEach(track => {
-            if (track.includeInMix) {
-                let src = audioCtx.createBufferSource();
-                src.buffer = track.buffer;
-                if (track.applyFX) src.connect(liveDSP.fxInput);
-                else src.connect(liveDSP.cleanInput);
-                src.start(0);
-                activeSources.push(src);
-                if (track.buffer.duration > maxDuration) maxDuration = track.buffer.duration;
-            }
-        });
-
-        // Route Vocal Track based on Checkboxes
-        const incVocal = document.getElementById('vocalMixToggle').checked;
-        const fxVocal = document.getElementById('vocalFXToggle').checked;
+        initAudioContext();
+        liveDSP = createFXBus(audioCtx, audioCtx.destination);
         
-        if (vocalBuffer && incVocal) {
-            let src = audioCtx.createBufferSource();
-            src.buffer = vocalBuffer;
-            if (fxVocal) src.connect(liveDSP.fxInput);
-            else src.connect(liveDSP.cleanInput);
-            src.start(0);
-            activeSources.push(src);
+        let vocalMix = document.getElementById('vocalMix').checked;
+        let vocalFx = document.getElementById('vocalFx').checked;
+
+        // Play Vocal
+        if (vocalBuffer && vocalMix) {
+            const vSrc = audioCtx.createBufferSource();
+            vSrc.buffer = vocalBuffer;
+            if (vocalFx) vSrc.connect(liveDSP.input);
+            else vSrc.connect(audioCtx.destination);
+            vSrc.start(0);
+            previewSources.push(vSrc);
             
-            // Handle Auto-stop when longest track finishes
-            src.onended = () => { 
-                if (isPreviewPlaying) {
-                   isPreviewPlaying = false; 
-                   previewBtn.innerText = "▶ Play Selected Mix";
-                }
+            vSrc.onended = () => { 
+                if (isPreviewPlaying) previewBtn.click(); // auto stop
             };
         }
 
-        if(activeSources.length > 0) {
-            isPreviewPlaying = true;
-            previewBtn.innerText = "⏸ Stop Mix";
-        } else {
-            statusText.innerText = "No tracks selected to play!";
-        }
-    });
-
-    // --- EXPORT (Offline Rendering) ---
-    document.getElementById('dlMixedBtn').addEventListener('click', exportAudio);
-
-    async function exportAudio() {
-        // Stop playback
-        if (isPreviewPlaying) previewBtn.click();
-
-        const format = document.getElementById('formatSelect').value;
-        statusText.innerText = `Rendering Final Mix as ${format.toUpperCase()}... please wait.`;
-        statusText.style.color = "#ffdd59";
-
-        // Calculate maximum length among selected tracks
-        let maxLenSeconds = 0;
-        const incVocal = document.getElementById('vocalMixToggle').checked;
-        
-        uploadedTracks.forEach(t => { if(t.includeInMix && t.buffer.duration > maxLenSeconds) maxLenSeconds = t.buffer.duration; });
-        if (incVocal && vocalBuffer && vocalBuffer.duration > maxLenSeconds) maxLenSeconds = vocalBuffer.duration;
-        
-        if (maxLenSeconds === 0) {
-            statusText.innerText = "No tracks selected to export!";
-            return;
-        }
-
-        const offlineCtx = new OfflineAudioContext(2, (maxLenSeconds + 3) * audioCtx.sampleRate, audioCtx.sampleRate);
-        const offlineDSP = buildSharedDSP(offlineCtx, offlineCtx.destination);
-
-        // Schedule Tracks
-        uploadedTracks.forEach(track => {
-            if (track.includeInMix) {
-                let src = offlineCtx.createBufferSource();
-                src.buffer = track.buffer;
-                if (track.applyFX) src.connect(offlineDSP.fxInput);
-                else src.connect(offlineDSP.cleanInput);
-                src.start(0);
+        // Play Selected Backing Tracks
+        backingTracks.forEach(track => {
+            if(track.includeMix) {
+                const bSrc = audioCtx.createBufferSource();
+                bSrc.buffer = track.buffer;
+                if (track.applyFx) bSrc.connect(liveDSP.input);
+                else bSrc.connect(audioCtx.destination);
+                bSrc.start(0);
+                previewSources.push(bSrc);
             }
         });
 
-        if (incVocal && vocalBuffer) {
-            const fxVocal = document.getElementById('vocalFXToggle').checked;
-            let src = offlineCtx.createBufferSource();
-            src.buffer = vocalBuffer;
-            if (fxVocal) src.connect(offlineDSP.fxInput);
-            else src.connect(offlineDSP.cleanInput);
-            src.start(0);
+        if(previewSources.length > 0) {
+            isPreviewPlaying = true;
+            previewBtn.innerText = "⏸ Stop Preview";
+        }
+    });
+
+    // --- EXPORT ---
+    document.getElementById('dlMixedBtn').addEventListener('click', () => exportAudio('mix'));
+    document.getElementById('dlMicBtn').addEventListener('click', () => exportAudio('vocal'));
+
+    async function exportAudio(mode) {
+        if (isPreviewPlaying) previewBtn.click(); // Stop preview
+
+        let renderVocals = (mode === 'vocal' || (mode === 'mix' && document.getElementById('vocalMix').checked)) && vocalBuffer;
+        let renderTracks = mode === 'mix' ? backingTracks.filter(t => t.includeMix) : [];
+        
+        if (!renderVocals && renderTracks.length === 0) {
+            alert("No tracks selected for export!"); return;
         }
 
-        // Render Mixdown
+        const format = document.getElementById('formatSelect').value;
+        statusText.innerText = `Rendering ${format.toUpperCase()}... please wait.`;
+        statusText.style.color = "#ffdd59";
+
+        // Calculate max length
+        let maxLen = renderVocals ? vocalBuffer.length : 0;
+        renderTracks.forEach(t => { if(t.buffer.length > maxLen) maxLen = t.buffer.length; });
+        maxLen += audioCtx.sampleRate * 3; // Reverb tail
+
+        const offlineCtx = new OfflineAudioContext(2, maxLen, audioCtx.sampleRate);
+        const offlineDSP = createFXBus(offlineCtx, offlineCtx.destination);
+
+        // Render Vocal
+        if (renderVocals) {
+            const vSrc = offlineCtx.createBufferSource();
+            vSrc.buffer = vocalBuffer;
+            if (document.getElementById('vocalFx').checked) vSrc.connect(offlineDSP.input);
+            else vSrc.connect(offlineCtx.destination);
+            vSrc.start(0);
+        }
+
+        // Render Tracks
+        renderTracks.forEach(track => {
+            const bSrc = offlineCtx.createBufferSource();
+            bSrc.buffer = track.buffer;
+            if (track.applyFx) bSrc.connect(offlineDSP.input);
+            else bSrc.connect(offlineCtx.destination);
+            bSrc.start(0);
+        });
+
         const renderedBuffer = await offlineCtx.startRendering();
 
-        // Convert and Download
         let finalBlob;
         if (format === 'wav') finalBlob = audioBufferToWav(renderedBuffer);
         else finalBlob = await encodeMp3(renderedBuffer);
@@ -582,7 +543,7 @@
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = `Studio_Master_Mix.${format}`;
+        a.download = mode === 'mix' ? `Final_Mix.${format}` : `Processed_Vocal.${format}`;
         document.body.appendChild(a);
         a.click();
         URL.revokeObjectURL(url);
