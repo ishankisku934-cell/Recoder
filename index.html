@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>High-Quality Web Audio Mixer & Recorder</title>
+    <title>Pro Web Audio Mixer & Recorder</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -14,94 +15,101 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
+            padding: 20px;
         }
         .container {
             background-color: #2c3e50;
-            padding: 40px;
+            padding: 30px;
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 450px;
+            max-width: 500px;
             text-align: center;
         }
-        h2 {
-            margin-top: 0;
-            color: #0fbcf9;
-        }
+        h2 { margin-top: 0; color: #0fbcf9; }
         .section {
-            margin-bottom: 25px;
-            padding-bottom: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
             border-bottom: 1px solid #485460;
         }
-        .section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
+        .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .controls-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 15px 0;
+            text-align: left;
         }
-        input[type="file"] {
-            margin: 10px 0;
+        .control-group { flex: 1; }
+        select, input[type="file"] {
             width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border-radius: 4px;
+            border: 1px solid #718093;
+            background-color: #353b48;
+            color: white;
         }
-        audio {
-            width: 100%;
-            margin-top: 10px;
-            height: 40px;
-            outline: none;
-        }
+        audio { width: 100%; margin-top: 10px; height: 35px; outline: none; }
         button {
-            padding: 12px 20px;
-            margin: 8px 5px;
+            padding: 10px 15px;
+            margin: 5px;
             border: none;
             border-radius: 6px;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        #startBtn {
-            background-color: #05c46b;
-            color: white;
-        }
-        #stopBtn {
-            background-color: #ff3f34;
-            color: white;
-        }
-        button:disabled {
-            background-color: #808e9b;
-            color: #d2dae2;
-            cursor: not-allowed;
-            transform: scale(0.98);
-        }
-        .download-links a {
+        #startBtn { background-color: #05c46b; color: white; }
+        #stopBtn { background-color: #ff3f34; color: white; }
+        .download-btn { background-color: #3c40c6; color: white; }
+        .download-btn:hover { background-color: #575fcf; }
+        button:disabled { background-color: #808e9b; color: #d2dae2; cursor: not-allowed; }
+        
+        .preview-box {
+            background: #353b48;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 15px;
             display: none;
-            text-decoration: none;
-            background-color: #3c40c6;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin: 5px;
-            font-size: 14px;
         }
-        .download-links a:hover {
-            background-color: #575fcf;
-        }
-        .status {
-            font-size: 14px;
-            color: #ffdd59;
-            margin-top: 10px;
-            height: 20px;
-        }
+        .preview-box h4 { margin: 0 0 10px 0; font-size: 14px; color: #0fbcf9; }
+        
+        .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Studio Mixer & Recorder</h2>
+    <h2>Pro Studio Mixer</h2>
     
     <div class="section">
         <label for="audioFile"><strong>1. Upload Backing Track:</strong></label>
         <input type="file" id="audioFile" accept="audio/*">
         <audio id="backingTrack" controls></audio>
+        
+        <div class="controls-row">
+            <div class="control-group">
+                <label for="bitrateSelect">Vocal Bitrate:</label>
+                <select id="bitrateSelect">
+                    <option value="32000">32 kbps</option>
+                    <option value="64000">64 kbps</option>
+                    <option value="128000">128 kbps</option>
+                    <option value="256000" selected>256 kbps (HQ)</option>
+                    <option value="320000">320 kbps (Studio)</option>
+                    <option value="480000">480 kbps (Max)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="formatSelect">Export Format:</label>
+                <select id="formatSelect">
+                    <option value="mp3">MP3</option>
+                    <option value="wav" selected>WAV (Uncompressed)</option>
+                    <option value="webm">WebM (Native)</option>
+                </select>
+            </div>
+        </div>
     </div>
 
     <div class="section">
@@ -111,134 +119,106 @@
         <div id="statusText" class="status">Please upload an audio file first.</div>
     </div>
 
-    <div class="section download-links" id="downloadSection">
-        <strong>3. Downloads:</strong><br>
-        <a id="downloadMixed" href="#">Download Mixed Audio</a>
-        <a id="downloadMic" href="#">Download Mic Only</a>
+    <div class="section preview-box" id="previewSection">
+        <h4>3. Preview & Download</h4>
+        
+        <div style="text-align: left; margin-bottom: 10px;">
+            <label><strong>Mixed Audio (Beat + Vocals):</strong></label>
+            <audio id="previewMixed" controls></audio>
+            <button class="download-btn" id="dlMixedBtn">Download Mix</button>
+        </div>
+        
+        <div style="text-align: left;">
+            <label><strong>Vocal Track Only:</strong></label>
+            <audio id="previewMic" controls></audio>
+            <button class="download-btn" id="dlMicBtn">Download Vocals</button>
+        </div>
     </div>
 </div>
 
 <script>
-    // UI Elements
+    // Elements
     const audioFileInput = document.getElementById('audioFile');
     const backingTrackEl = document.getElementById('backingTrack');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusText = document.getElementById('statusText');
-    const downloadMixed = document.getElementById('downloadMixed');
-    const downloadMic = document.getElementById('downloadMic');
-
-    // Audio Graph & Recorders
-    let audioCtx;
-    let mixedDest;
-    let trackSourceNode;
-    let micSourceNode;
-    let micStream;
     
-    let mixedRecorder;
-    let micRecorder;
-    let mixedChunks = [];
-    let micChunks = [];
+    const previewSection = document.getElementById('previewSection');
+    const previewMixed = document.getElementById('previewMixed');
+    const previewMic = document.getElementById('previewMic');
+    
+    const bitrateSelect = document.getElementById('bitrateSelect');
+    const formatSelect = document.getElementById('formatSelect');
+    
+    // Audio Context & Nodes
+    let audioCtx, mixedDest, trackSourceNode, micSourceNode, micStream;
+    let mixedRecorder, micRecorder;
+    let mixedChunks = [], micChunks = [];
+    
+    // Final Blobs for Preview/Download
+    let finalMixedBlob = null;
+    let finalMicBlob = null;
 
-    // 1. Handle File Upload
+    // 1. Upload Handler
     audioFileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-            const objectUrl = URL.createObjectURL(file);
-            backingTrackEl.src = objectUrl;
+            backingTrackEl.src = URL.createObjectURL(file);
             startBtn.disabled = false;
             statusText.innerText = "Ready to record. Press Start.";
-            
-            // Hide download links if a new file is uploaded
-            downloadMixed.style.display = 'none';
-            downloadMic.style.display = 'none';
+            previewSection.style.display = 'none'; // Hide previews on new upload
         }
     });
 
-    // 2. Start Recording (High Quality Settings Applied)
+    // 2. Start Recording
     startBtn.addEventListener('click', async () => {
         try {
-            // Initialize AudioContext on user interaction
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // Create a destination node for the final mix
                 mixedDest = audioCtx.createMediaStreamDestination();
-                
-                // Route the backing track into the Web Audio API
                 trackSourceNode = audioCtx.createMediaElementSource(backingTrackEl);
-                
-                // Connect backing track to speakers (so you can hear it)
                 trackSourceNode.connect(audioCtx.destination);
-                
-                // Connect backing track to the mix destination
                 trackSourceNode.connect(mixedDest);
             }
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
 
-            // Resume context if suspended (browser auto-play policies)
-            if (audioCtx.state === 'suspended') {
-                await audioCtx.resume();
-            }
-
-            // Request microphone access (Raw Audio: No Echo Cancellation/Noise Suppression)
             micStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false
-                }, 
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, 
                 video: false 
             });
             
-            // Route microphone into the Web Audio API
             micSourceNode = audioCtx.createMediaStreamSource(micStream);
-            
-            // Connect microphone ONLY to the mix destination (not speakers, to prevent feedback loop)
             micSourceNode.connect(mixedDest);
 
-            // Setup MediaRecorders
-            mixedChunks = [];
-            micChunks = [];
+            mixedChunks = []; micChunks = [];
             
-            // Set Bitrate to 256 kbps
-            const options = { audioBitsPerSecond: 256000 };
+            // Apply User's Selected Bitrate
+            const bps = parseInt(bitrateSelect.value);
+            const options = { audioBitsPerSecond: bps };
 
-            // Recorder 1: Captures the mixed destination stream
             mixedRecorder = new MediaRecorder(mixedDest.stream, options);
-            // Recorder 2: Captures the raw microphone stream
             micRecorder = new MediaRecorder(micStream, options);
 
             mixedRecorder.ondataavailable = e => { if (e.data.size > 0) mixedChunks.push(e.data); };
             micRecorder.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
 
-            // Handle file generation on stop
             mixedRecorder.onstop = () => {
-                const blob = new Blob(mixedChunks, { type: 'audio/webm' });
-                downloadMixed.href = URL.createObjectURL(blob);
-                downloadMixed.download = 'Mixed_Track_HQ.webm';
-                downloadMixed.style.display = 'inline-block';
+                finalMixedBlob = new Blob(mixedChunks, { type: 'audio/webm' });
+                previewMixed.src = URL.createObjectURL(finalMixedBlob);
             };
 
             micRecorder.onstop = () => {
-                const blob = new Blob(micChunks, { type: 'audio/webm' });
-                downloadMic.href = URL.createObjectURL(blob);
-                downloadMic.download = 'Vocal_Only_HQ.webm';
-                downloadMic.style.display = 'inline-block';
+                finalMicBlob = new Blob(micChunks, { type: 'audio/webm' });
+                previewMic.src = URL.createObjectURL(finalMicBlob);
+                previewSection.style.display = 'block'; // Show preview area
             };
 
-            // Start Everything
-            mixedRecorder.start();
-            micRecorder.start();
-            
-            // Reset and play the backing track
-            backingTrackEl.currentTime = 0;
-            backingTrackEl.play();
+            mixedRecorder.start(); micRecorder.start();
+            backingTrackEl.currentTime = 0; backingTrackEl.play();
 
-            // UI Updates
-            startBtn.disabled = true;
-            stopBtn.disabled = false;
-            audioFileInput.disabled = true;
-            statusText.innerText = "🔴 Recording in High Quality (256kbps)...";
+            startBtn.disabled = true; stopBtn.disabled = false; audioFileInput.disabled = true;
+            statusText.innerText = `🔴 Recording at ${bps/1000} kbps...`;
             statusText.style.color = "#ff3f34";
 
         } catch (err) {
@@ -249,28 +229,130 @@
 
     // 3. Stop Recording
     stopBtn.addEventListener('click', () => {
-        // Stop Recorders
         if (mixedRecorder && mixedRecorder.state !== 'inactive') mixedRecorder.stop();
         if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
         
-        // Stop Backing Track
         backingTrackEl.pause();
-        
-        // Disconnect Mic to prevent compounding audio nodes if restarted
         if (micSourceNode) micSourceNode.disconnect();
-        
-        // Release microphone hardware
-        if (micStream) {
-            micStream.getTracks().forEach(track => track.stop());
-        }
+        if (micStream) micStream.getTracks().forEach(track => track.stop());
 
-        // UI Updates
-        startBtn.disabled = false;
-        stopBtn.disabled = true;
-        audioFileInput.disabled = false;
-        statusText.innerText = "Recording complete. Download your files below.";
+        startBtn.disabled = false; stopBtn.disabled = true; audioFileInput.disabled = false;
+        statusText.innerText = "Recording complete! Listen to the previews below.";
         statusText.style.color = "#05c46b";
     });
+
+    // --- Audio Conversion & Download Logic ---
+
+    document.getElementById('dlMixedBtn').addEventListener('click', () => processAndDownload(finalMixedBlob, 'Mixed_Track'));
+    document.getElementById('dlMicBtn').addEventListener('click', () => processAndDownload(finalMicBlob, 'Vocal_Only'));
+
+    async function processAndDownload(webmBlob, filenameBase) {
+        if (!webmBlob) return;
+        
+        const format = formatSelect.value;
+        statusText.innerText = `Converting to ${format.toUpperCase()}... please wait.`;
+        statusText.style.color = "#ffdd59";
+        
+        let outBlob = webmBlob;
+        let ext = "webm";
+
+        if (format === 'wav' || format === 'mp3') {
+            const arrayBuffer = await webmBlob.arrayBuffer();
+            const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+
+            if (format === 'wav') {
+                outBlob = audioBufferToWav(audioBuffer);
+                ext = "wav";
+            } else if (format === 'mp3') {
+                outBlob = await encodeMp3(audioBuffer);
+                ext = "mp3";
+            }
+        }
+
+        const url = URL.createObjectURL(outBlob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${filenameBase}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        statusText.innerText = "Download completed successfully!";
+        statusText.style.color = "#05c46b";
+    }
+
+    // WAV Encoder (Raw PCM Data)
+    function audioBufferToWav(buffer) {
+        let numOfChan = buffer.numberOfChannels,
+            length = buffer.length * numOfChan * 2 + 44,
+            bufferArray = new ArrayBuffer(length),
+            view = new DataView(bufferArray),
+            channels = [], i, sample, offset = 0, pos = 0;
+
+        // RIFF chunk descriptor
+        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+        // fmt sub-chunk
+        setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+        setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
+        setUint16(numOfChan * 2); setUint16(16);
+        // data sub-chunk
+        setUint32(0x61746164); setUint32(length - pos - 4);
+
+        for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+        while (pos < buffer.length) {
+            for (i = 0; i < numOfChan; i++) {
+                sample = Math.max(-1, Math.min(1, channels[i][pos]));
+                sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                view.setInt16(offset, sample, true); offset += 2;
+            }
+            pos++;
+        }
+        return new Blob([bufferArray], {type: "audio/wav"});
+
+        function setUint16(data) { view.setUint16(offset, data, true); offset += 2; }
+        function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
+    }
+
+    // MP3 Encoder using lamejs
+    async function encodeMp3(audioBuffer) {
+        if (!window.lamejs) {
+            alert("MP3 encoder library failed to load. Downloading as WAV instead.");
+            return audioBufferToWav(audioBuffer);
+        }
+        
+        const channels = audioBuffer.numberOfChannels;
+        const sampleRate = audioBuffer.sampleRate;
+        const mp3encoder = new lamejs.Mp3Encoder(channels, sampleRate, 192); // 192kbps MP3 Output
+        const mp3Data = [];
+        const sampleBlockSize = 1152;
+        
+        const left = audioBuffer.getChannelData(0);
+        const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
+        
+        const leftInt16 = new Int16Array(left.length);
+        const rightInt16 = new Int16Array(right.length);
+        
+        for (let i = 0; i < left.length; i++) {
+            leftInt16[i] = left[i] * 32767.5;
+            rightInt16[i] = right[i] * 32767.5;
+        }
+
+        for (let i = 0; i < left.length; i += sampleBlockSize) {
+            const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
+            const rightChunk = rightInt16.subarray(i, i + sampleBlockSize);
+            const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+            if (mp3buf.length > 0) mp3Data.push(mp3buf);
+        }
+        
+        const mp3buf = mp3encoder.flush();
+        if (mp3buf.length > 0) mp3Data.push(mp3buf);
+        
+        return new Blob(mp3Data, { type: 'audio/mp3' });
+    }
 </script>
 
 </body>
