@@ -100,8 +100,11 @@
             border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
         }
         .track-name { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
-        .track-controls { display: flex; gap: 10px; font-size: 13px; }
+        .track-controls { display: flex; gap: 10px; font-size: 13px; align-items: center; }
         .checkbox-label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #0fbcf9; }
+        
+        /* New styling for Volume Slider */
+        .vol-slider { width: 80px !important; margin: 0 !important; padding: 0 !important; height: 15px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -120,7 +123,7 @@
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop</button>
         <canvas id="visualizer"></canvas>
-        <div id="statusText" class="status">Ready. Press Start to record Vocals.</div>
+        <div id="statusText" class="status">Ready. Press Start to record Vocals. <span id="recordTimer" style="display:none; color:#ff3f34;">(00:00)</span></div>
     </div>
 
     <div class="section" id="postProcessingSection">
@@ -131,6 +134,7 @@
         <div class="track-item" style="background: #2f3640; border: 1px solid #e1b12c;">
             <div class="track-name" style="color: #e1b12c;">🎤 Recorded Vocal Track</div>
             <div class="track-controls">
+                <input type="range" id="vocalVolume" class="vol-slider" min="0" max="2" step="0.05" value="1" title="Vocal Volume">
                 <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalMix" checked> In Mix</label>
                 <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalFx" checked> Apply FX</label>
             </div>
@@ -207,6 +211,11 @@
     const postProcessingSection = document.getElementById('postProcessingSection');
     const previewBtn = document.getElementById('previewBtn');
 
+    // Timer Variables
+    let recordTimerInterval;
+    let recordSeconds = 0;
+    const recordTimerEl = document.getElementById('recordTimer');
+
     // UI Sliders
     const params = {
         room: document.getElementById('param_room'), predelay: document.getElementById('param_predelay'),
@@ -257,7 +266,8 @@
                     name: files[i].name,
                     buffer: buffer,
                     includeMix: true,
-                    applyFx: false // By default, backing tracks have no FX
+                    applyFx: false, // By default, backing tracks have no FX
+                    volume: 1.0 // Default volume set to 100%
                 });
             }
             
@@ -279,6 +289,7 @@
             div.innerHTML = `
                 <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
                 <div class="track-controls">
+                    <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" onchange="updateTrackVolume(${index}, this.value)" title="Track Volume">
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
                     <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
@@ -289,6 +300,7 @@
     }
 
     window.updateTrack = (index, prop, value) => { backingTracks[index][prop] = value; };
+    window.updateTrackVolume = (index, val) => { backingTracks[index].volume = parseFloat(val); };
     window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); };
 
     // 2. Start Raw Recording
@@ -323,22 +335,37 @@
 
             micRecorder.start();
             startBtn.disabled = true; stopBtn.disabled = false; audioFilesInput.disabled = true;
-            statusText.innerText = `🔴 Recording Raw Vocals...`;
+            statusText.childNodes[0].nodeValue = `🔴 Recording Raw Vocals... `;
             statusText.style.color = "#ff3f34";
+
+            // Timer Start
+            recordSeconds = 0;
+            recordTimerEl.style.display = 'inline';
+            recordTimerEl.innerText = "(00:00)";
+            recordTimerInterval = setInterval(() => {
+                recordSeconds++;
+                let m = Math.floor(recordSeconds / 60).toString().padStart(2, '0');
+                let s = (recordSeconds % 60).toString().padStart(2, '0');
+                recordTimerEl.innerText = `(${m}:${s})`;
+            }, 1000);
 
             // If preview was playing, stop it
             if(isPreviewPlaying) previewBtn.click();
             
-            // Play included tracks for singer
+            // Play ALL tracks for singer (regardless of 'In Mix' status)
             previewSources = [];
             backingTracks.forEach(track => {
-                if(track.includeMix) {
-                    const src = audioCtx.createBufferSource();
-                    src.buffer = track.buffer;
-                    src.connect(audioCtx.destination);
-                    src.start(0);
-                    previewSources.push(src);
-                }
+                const src = audioCtx.createBufferSource();
+                src.buffer = track.buffer;
+                
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.value = track.volume;
+                
+                src.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                
+                src.start(0);
+                previewSources.push(src);
             });
 
         } catch (err) {
@@ -350,6 +377,10 @@
     stopBtn.addEventListener('click', () => {
         if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
         
+        // Timer Stop
+        clearInterval(recordTimerInterval);
+        recordTimerEl.style.display = 'none';
+
         // Stop playing backing tracks
         previewSources.forEach(src => { try { src.stop(); } catch(e){} });
         previewSources = [];
@@ -358,7 +389,8 @@
         cancelAnimationFrame(animationId);
         drawFlatLine();
         startBtn.disabled = false; stopBtn.disabled = true; audioFilesInput.disabled = false;
-        statusText.innerText = "Processing recording...";
+        statusText.childNodes[0].nodeValue = "Processing recording...";
+        statusText.style.color = "#ffdd59";
     });
 
     // --- DSP LOGIC ---
@@ -456,13 +488,20 @@
         
         let vocalMix = document.getElementById('vocalMix').checked;
         let vocalFx = document.getElementById('vocalFx').checked;
+        let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
         // Play Vocal
         if (vocalBuffer && vocalMix) {
             const vSrc = audioCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
-            if (vocalFx) vSrc.connect(liveDSP.input);
-            else vSrc.connect(audioCtx.destination);
+            
+            const vGain = audioCtx.createGain();
+            vGain.gain.value = vocalVol;
+            
+            vSrc.connect(vGain);
+            if (vocalFx) vGain.connect(liveDSP.input);
+            else vGain.connect(audioCtx.destination);
+            
             vSrc.start(0);
             previewSources.push(vSrc);
             
@@ -473,11 +512,17 @@
 
         // Play Selected Backing Tracks
         backingTracks.forEach(track => {
-            if(track.includeMix) {
+            if(track.includeMix) { // Only play if included in mix
                 const bSrc = audioCtx.createBufferSource();
                 bSrc.buffer = track.buffer;
-                if (track.applyFx) bSrc.connect(liveDSP.input);
-                else bSrc.connect(audioCtx.destination);
+                
+                const bGain = audioCtx.createGain();
+                bGain.gain.value = track.volume;
+                
+                bSrc.connect(bGain);
+                if (track.applyFx) bGain.connect(liveDSP.input);
+                else bGain.connect(audioCtx.destination);
+                
                 bSrc.start(0);
                 previewSources.push(bSrc);
             }
@@ -504,7 +549,7 @@
         }
 
         const format = document.getElementById('formatSelect').value;
-        statusText.innerText = `Rendering ${format.toUpperCase()}... please wait.`;
+        statusText.childNodes[0].nodeValue = `Rendering ${format.toUpperCase()}... please wait.`;
         statusText.style.color = "#ffdd59";
 
         // Calculate max length
@@ -514,13 +559,20 @@
 
         const offlineCtx = new OfflineAudioContext(2, maxLen, audioCtx.sampleRate);
         const offlineDSP = createFXBus(offlineCtx, offlineCtx.destination);
+        let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
         // Render Vocal
         if (renderVocals) {
             const vSrc = offlineCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
-            if (document.getElementById('vocalFx').checked) vSrc.connect(offlineDSP.input);
-            else vSrc.connect(offlineCtx.destination);
+            
+            const vGain = offlineCtx.createGain();
+            vGain.gain.value = vocalVol;
+            
+            vSrc.connect(vGain);
+            if (document.getElementById('vocalFx').checked) vGain.connect(offlineDSP.input);
+            else vGain.connect(offlineCtx.destination);
+            
             vSrc.start(0);
         }
 
@@ -528,8 +580,14 @@
         renderTracks.forEach(track => {
             const bSrc = offlineCtx.createBufferSource();
             bSrc.buffer = track.buffer;
-            if (track.applyFx) bSrc.connect(offlineDSP.input);
-            else bSrc.connect(offlineCtx.destination);
+            
+            const bGain = offlineCtx.createGain();
+            bGain.gain.value = track.volume;
+            
+            bSrc.connect(bGain);
+            if (track.applyFx) bGain.connect(offlineDSP.input);
+            else bGain.connect(offlineCtx.destination);
+            
             bSrc.start(0);
         });
 
@@ -548,7 +606,7 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        statusText.innerText = "Export successfully completed!";
+        statusText.childNodes[0].nodeValue = "Export successfully completed!";
         statusText.style.color = "#05c46b";
     }
 
