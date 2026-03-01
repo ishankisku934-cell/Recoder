@@ -239,7 +239,10 @@
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                 <span style="font-size: 11px; color: #808e9b;">↑ Boost / ↓ Cut (dB range: +18 to -36)</span>
-                <button onclick="resetEQ()" style="padding: 4px 10px; margin: 0; font-size: 11px; background: #485460; color: white; flex: none; width: auto;">Reset EQ</button>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <span id="eqStatusBadge" style="font-size: 10px; padding: 2px 7px; border-radius: 10px; background: #353b48; color: #808e9b;">EQ: OFF</span>
+                    <button onclick="resetEQ()" style="padding: 4px 10px; margin: 0; font-size: 11px; background: #485460; color: white; flex: none; width: auto;">Reset EQ</button>
+                </div>
             </div>
         </div>
 
@@ -549,12 +552,14 @@
         if (isPreviewPlaying) {
             previewSources.forEach(src => { try { src.stop(); } catch(e){} });
             previewSources = [];
+            liveEQFilters = [];
             isPreviewPlaying = false;
             previewBtn.innerText = "▶ Play / Pause Preview";
             return;
         }
 
         initAudioContext();
+        liveEQFilters = []; // Reset live EQ filters for new session
         liveDSP = createFXBus(audioCtx, audioCtx.destination);
         
         let vocalMix = document.getElementById('vocalMix').checked;
@@ -591,8 +596,8 @@
                 bGain.gain.value = track.volume;
                 
                 bSrc.connect(bGain);
-                if (track.applyFx) bGain.connect(liveDSP.input);
-                else bGain.connect(audioCtx.destination);
+                const bDest = track.applyFx ? liveDSP.input : audioCtx.destination;
+                if (!applyEQToChain(audioCtx, bGain, bDest)) bGain.connect(bDest);
                 
                 bSrc.start(0);
                 previewSources.push(bSrc);
@@ -656,8 +661,8 @@
             bGain.gain.value = track.volume;
             
             bSrc.connect(bGain);
-            if (track.applyFx) bGain.connect(offlineDSP.input);
-            else bGain.connect(offlineCtx.destination);
+            const bDest3 = track.applyFx ? offlineDSP.input : offlineCtx.destination;
+            if (!applyEQToChain(offlineCtx, bGain, bDest3)) bGain.connect(bDest3);
             
             bSrc.start(0);
         });
@@ -741,7 +746,7 @@
     // --- GRAPHIC EQ ---
     const eqCanvas = document.getElementById('eqCanvas');
     const eqCtx = eqCanvas.getContext('2d');
-    
+
     // EQ Points: {freq, gain} — freq in Hz, gain in dB
     let eqPoints = [
         { freq: 60, gain: 0 },
@@ -750,7 +755,7 @@
         { freq: 4000, gain: 0 },
         { freq: 12000, gain: 0 },
     ];
-    
+
     const EQ_MIN_DB = -36;
     const EQ_MAX_DB = 18;
     const EQ_MIN_FREQ = 20;
@@ -777,7 +782,10 @@
     }
     
     function drawEQ() {
-        eqCanvas.width = eqCanvas.offsetWidth;
+        // Get width from parent when canvas itself may be hidden
+        const parentWidth = eqCanvas.parentElement ? eqCanvas.parentElement.clientWidth : 500;
+        eqCanvas.width = parentWidth > 0 ? parentWidth : 500;
+        eqCanvas.height = 140;
         const w = eqCanvas.width, h = eqCanvas.height;
         eqCtx.clearRect(0, 0, w, h);
         
@@ -906,6 +914,7 @@
         }
         isDraggingEQ = true;
         drawEQ();
+        updateLiveEQ();
         e.preventDefault();
     });
     
@@ -925,6 +934,7 @@
         dragPoint.freq = Math.round(Math.max(EQ_MIN_FREQ, Math.min(EQ_MAX_FREQ, xToFreq(x))));
         dragPoint.gain = parseFloat(Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, yToGain(y))).toFixed(1));
         drawEQ();
+        updateLiveEQ();
     });
     
     window.addEventListener('mouseup', () => { isDraggingEQ = false; dragPoint = null; });
@@ -958,7 +968,7 @@
     
     window.addEventListener('touchend', () => { isDraggingEQ = false; dragPoint = null; });
     
-    document.getElementById('eqToggle').addEventListener('change', drawEQ);
+    document.getElementById('eqToggle').addEventListener('change', () => { drawEQ(); updateLiveEQ(); });
     
     window.resetEQ = function() {
         eqPoints = [
@@ -968,15 +978,22 @@
         drawEQ();
     };
     
-    // Initialize EQ canvas
-    setTimeout(drawEQ, 100);
+    // Initialize EQ canvas - use MutationObserver to draw when section becomes visible
     window.addEventListener('resize', drawEQ);
+    const eqObserver = new MutationObserver(() => { drawEQ(); });
+    eqObserver.observe(document.getElementById('postProcessingSection'), { attributes: true, attributeFilter: ['style'] });
+    // Also try immediately and after short delay
+    drawEQ();
+    setTimeout(drawEQ, 200);
+    setTimeout(drawEQ, 500);
     
     // --- Apply EQ to audio graph ---
+    let liveEQFilters = []; // Track live EQ filter nodes for real-time update
+
     // Returns true if EQ was applied (caller should NOT also connect source), false if not applied
     function applyEQToChain(context, sourceNode, destinationNode) {
         if (!document.getElementById('eqToggle').checked || eqPoints.length === 0) {
-            return false; // caller should connect manually
+            return false;
         }
         const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
         const filters = sorted.map(pt => {
@@ -990,7 +1007,31 @@
         sourceNode.connect(filters[0]);
         for (let i = 0; i < filters.length - 1; i++) filters[i].connect(filters[i+1]);
         filters[filters.length - 1].connect(destinationNode);
-        return true; // EQ applied, do NOT connect source again
+        // Store for live updates (only for live audioCtx, not offlineCtx)
+        if (context === audioCtx) liveEQFilters.push(...filters);
+        return true;
+    }
+
+    // Called when user drags EQ points during preview - update live filter gains
+    function updateLiveEQ() {
+        const badge = document.getElementById('eqStatusBadge');
+        const isOn = document.getElementById('eqToggle').checked && eqPoints.some(p => p.gain !== 0);
+        if (badge) {
+            badge.textContent = isOn ? 'EQ: ACTIVE' : (document.getElementById('eqToggle').checked ? 'EQ: FLAT' : 'EQ: OFF');
+            badge.style.background = isOn ? '#05c46b' : '#353b48';
+            badge.style.color = isOn ? '#fff' : '#808e9b';
+        }
+        // Live update filter gains if preview is playing
+        if (isPreviewPlaying && liveEQFilters.length > 0) {
+            const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
+            // Update as many filters as we have EQ points (may not match perfectly but close enough)
+            liveEQFilters.forEach((f, i) => {
+                if (sorted[i % sorted.length]) {
+                    f.frequency.setTargetAtTime(sorted[i % sorted.length].freq, audioCtx.currentTime, 0.01);
+                    f.gain.setTargetAtTime(sorted[i % sorted.length].gain, audioCtx.currentTime, 0.01);
+                }
+            });
+        }
     }
 
     // --- Visualizer Drawing ---
@@ -1016,3 +1057,31 @@
 
 </body>
 </html>
+
+
+
+
+
+
+
+এতে সব রকম ফিচারস আছে তবে আমাকে একটা ফিচারস দিতে পারবে। 
+
+তুমি জানো রেকর্ডিং করলে সমস্ত রকমের ফ্রিকোয়েন্সি রেকর্ড হয় শূন্য থেকে শুরু করে 30 থেকে 40 হাজার 50 হাজার ফ্রিকোয়েন্সি আওয়াজ রেকর্ডিং হয়। 
+
+এখন আমার কথা হচ্ছে ‌ নয়েজ বলে একটা ব্যাপার থাকে। আজ আর নয়েজ হলো সেটাই আমরা যেরকমের সিগন্যাল বা ফ্রিকোয়েন্স  চাইছি। সেটা ছাড়াও যদি আরো এক্সট্রা কিছু ঢুকে যায় যেটা আমরা চাই না। আওয়াজের মধ্যে এটাকেই বলা নয়েজ। অসাধারণ তো এটাকে আমরা যদি সরাতে চাই। সবথেকে সোজা উপায় হচ্ছে। কোন ফিল্টার ব্যবহার করা। কিন্তু আমাদের কাছে এই মুহূর্তে ফিল্টার নেই। ‌ কিন্তু যদি আমরা সেই নয়েস টাকে যদি একটু প্রেডিক্ট করতে পারি। ‌ এবং ঠিক সিন ওয়েস্টার যে এমপ্লিটিউড আছে। ওটাকে আমরা প্রায় শূন্যের কাছাকাছি নিয়ে চলে আসি ‌ কিংবা অনেক সময় মাইনাস করে দেই। ডেসিবেল এর ভাষায় আমরা যদি এটা কে - 32 বা - 35 করে দিতে পারি। তাহলে ওই নয়েজটা আমাদের কানে আর আসে না। এবং ভয়েসটা ক্লিয়ার হয়ে গেল। 
+
+তো এর জন্য গ্রাফিক্যাল ফিল্টার ইউজ করা হয়। 
+সফটওয়্যার ইন্ডাস্ট্রিতে। ‌ সফটওয়্যার ডিজিটাল  অডিও স্টেশনে।
+
+তো তুমি কি আমাকে এরকম একটা বানিয়ে দিতে পারবে। 
+
+ওই যে লাইনটা দেখতে পাচ্ছ মাঝখানে। ওই লাইনটা যে পয়েন্টে টাচ করবো বেশ সেখান থেকেই আমি ‌ ওটাকে উঠাতে নামাতে পারবো। ঠিক  ষঅর্ডার সিটিতে যেমন কন্ট্রোল করা হয়।
+
+দয়া করে আমাকে এরকম একটা বানিয়ে দাও।
+
+
+তবে অবশ্যই বাকি জিনিসগুলো একদমই পরিবর্তন করবে না। 
+
+আরেকটু ‌ একটা জিনিস আপডেট অবশ্যই করে দাও আমি না ডাউনলোড একবারই করতে পারছি। ‌ মনে হয় ক্রোম ব্রাউজার তারপরে আমার ডাউনলোড টাকে স্প্যাম মনে করে মানে আর করতে দিচ্ছে। তো এটাকে ফিক্স করো এবং যাতে আমি একাধিকবার ডাউনলোড করতে পারি। 
+
+আর আর ভুল করো আর বাকি অন্য জিনিস পরিবর্তন করবে না।
