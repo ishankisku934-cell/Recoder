@@ -347,15 +347,23 @@
             <div style="font-size: 11px; color: #808e9b; margin-top: 4px;">
                 Click on the EQ line to add control points. Drag points up/down to boost or cut frequencies. Right-click to remove a point.
             </div>
-            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; margin-bottom: 4px;">
-                <button onmousedown="startScroll(-1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(-1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">◀</button>
-                <span style="font-size: 11px; color: #808e9b;">EQ ভিউ স্ক্রল করুন</span>
-                <button onmousedown="startScroll(1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">▶</button>
+            <div style="display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin-top: 10px; margin-bottom: 4px;">
+                <!-- Zoom Out + Scroll Left -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                    <button onclick="eqZoom(-1)" style="flex: none; width: auto; padding: 3px 14px; margin: 0; font-size: 13px; background: #2c3e50; color: #ffdd59; border: 1px solid #ffdd59; border-radius: 6px; cursor: pointer;" title="Zoom Out">🔍−</button>
+                    <button onmousedown="startScroll(-1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(-1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">◀</button>
+                </div>
+                <span style="font-size: 11px; color: #808e9b; align-self: flex-end; padding-bottom: 6px;" id="eqZoomLabel">EQ ভিউ স্ক্রল / জুম</span>
+                <!-- Zoom In + Scroll Right -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                    <button onclick="eqZoom(1)" style="flex: none; width: auto; padding: 3px 14px; margin: 0; font-size: 13px; background: #2c3e50; color: #ffdd59; border: 1px solid #ffdd59; border-radius: 6px; cursor: pointer;" title="Zoom In">🔍+</button>
+                    <button onmousedown="startScroll(1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">▶</button>
+                </div>
             </div>
             <div id="eqScrollWrapper" style="overflow-x: auto; overflow-y: hidden; margin-top: 0; border-radius: 6px; scrollbar-color: #485460 #101418; scrollbar-width: thin;">
-                <div style="position: relative; width: 1200px;">
+                <div id="eqInnerDiv" style="position: relative; width: 1200px;">
                     <canvas id="eqCanvas" style="height: 160px; cursor: crosshair; display: block; width: 1200px;"></canvas>
-                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 2px 4px; background: #101418; border-radius: 0 0 6px 6px;">
+                    <div id="eqFreqLabels" style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 2px 4px; background: #101418; border-radius: 0 0 6px 6px;">
                         <span>20Hz</span><span>30</span><span>50</span><span>80</span><span>100</span><span>200</span><span>300</span><span>500</span><span>800</span><span>1k</span><span>2k</span><span>3k</span><span>5k</span><span>8k</span><span>10k</span><span>15k</span><span>20kHz</span>
                     </div>
                 </div>
@@ -914,6 +922,11 @@
     const eqCanvas = document.getElementById('eqCanvas');
     const eqCtx = eqCanvas.getContext('2d');
 
+    // EQ Zoom state — must be declared before drawEQ()
+    let eqCanvasWidth = 1200;
+    const EQ_ZOOM_MIN = 600;
+    const EQ_ZOOM_MAX = 4800;
+
     // EQ Points: {freq, gain} — freq in Hz, gain in dB
     let eqPoints = [
         { freq: 60, gain: 0 },
@@ -949,8 +962,8 @@
     }
     
     function drawEQ() {
-        // Fixed wide canvas for detailed frequency control
-        eqCanvas.width = 1200;
+        // Dynamic canvas width based on zoom level
+        eqCanvas.width = eqCanvasWidth;
         eqCanvas.height = 160;
         const w = eqCanvas.width, h = eqCanvas.height;
         eqCtx.clearRect(0, 0, w, h);
@@ -1188,14 +1201,18 @@
             badge.style.background = isOn ? '#05c46b' : '#353b48';
             badge.style.color = isOn ? '#fff' : '#808e9b';
         }
-        // Live update filter gains if preview is playing
-        if (isPreviewPlaying && liveEQFilters.length > 0) {
+
+        // Real-time update: liveEQFilters সরাসরি eqPoints এর সাথে index-match করে update করি
+        if ((isPreviewPlaying || trackPreviewSource) && audioCtx && liveEQFilters.length > 0) {
             const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
-            // Update as many filters as we have EQ points (may not match perfectly but close enough)
+            const now = audioCtx.currentTime;
             liveEQFilters.forEach((f, i) => {
-                if (sorted[i % sorted.length]) {
-                    f.frequency.setTargetAtTime(sorted[i % sorted.length].freq, audioCtx.currentTime, 0.01);
-                    f.gain.setTargetAtTime(sorted[i % sorted.length].gain, audioCtx.currentTime, 0.01);
+                if (i < sorted.length) {
+                    f.frequency.setTargetAtTime(sorted[i].freq, now, 0.008);
+                    f.gain.setTargetAtTime(sorted[i].gain, now, 0.008);
+                } else {
+                    // Extra filters (point deleted) → gain 0
+                    f.gain.setTargetAtTime(0, now, 0.008);
                 }
             });
         }
@@ -1307,6 +1324,7 @@
         if (trackPreviewIndex >= 0 && backingTracks[trackPreviewIndex]) {
             backingTracks[trackPreviewIndex].liveGainNode = null;
         }
+        liveEQFilters = []; // EQ filters clear
         stopTransportAnim();
         // Reset all play buttons
         document.querySelectorAll('.track-play-btn').forEach(b => {
@@ -1335,11 +1353,16 @@
 
         const gainNode = audioCtx.createGain();
         gainNode.gain.value = track.volume;
-        track.liveGainNode = gainNode; // ← individual preview-এও live reference
+        track.liveGainNode = gainNode;
         src.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
 
-        src.start(0, seekOffsetSeconds); // seekOffset থেকে শুরু
+        // EQ chain apply করি individual preview-এও
+        liveEQFilters = [];
+        if (!applyEQToChain(audioCtx, gainNode, audioCtx.destination)) {
+            gainNode.connect(audioCtx.destination);
+        }
+
+        src.start(0, seekOffsetSeconds);
         trackPreviewSource = src;
         trackPreviewIndex = index;
         trackPreviewStartTime = audioCtx.currentTime;
@@ -1371,6 +1394,27 @@
     };
     window.stopScroll = function() {
         if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    };
+
+    // --- EQ Zoom Control ---
+    window.eqZoom = function(dir) {
+        const step = eqCanvasWidth * 0.3; // 30% zoom step
+        if (dir > 0) {
+            eqCanvasWidth = Math.min(EQ_ZOOM_MAX, Math.round(eqCanvasWidth + step));
+        } else {
+            eqCanvasWidth = Math.max(EQ_ZOOM_MIN, Math.round(eqCanvasWidth - step));
+        }
+        // Canvas ও inner div-এর width update করি
+        const canvas = document.getElementById('eqCanvas');
+        const inner = document.getElementById('eqInnerDiv');
+        canvas.style.width = eqCanvasWidth + 'px';
+        inner.style.width = eqCanvasWidth + 'px';
+        // drawEQ নতুন width-এ redraw করবে
+        drawEQ();
+        // Zoom label update
+        const pct = Math.round((eqCanvasWidth / 1200) * 100);
+        const lbl = document.getElementById('eqZoomLabel');
+        if (lbl) lbl.innerText = `জুম: ${pct}%`;
     };
 
     // --- Visualizer Drawing ---
