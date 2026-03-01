@@ -23,7 +23,7 @@
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 720px;
+            max-width: 650px;
         }
         h2 { margin-top: 0; color: #0fbcf9; text-align: center; }
         .section {
@@ -34,7 +34,6 @@
         .section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         
         .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .grid-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
         
         select, input[type="file"], input[type="range"] {
             width: 100%;
@@ -94,18 +93,18 @@
         }
 
         .status { font-size: 14px; color: #ffdd59; margin-top: 10px; min-height: 20px; font-weight: bold; text-align: center; }
-        .timer { font-size: 20px; color: #0fbcf9; text-align: center; margin: 5px 0; font-family: monospace; }
 
-        .track-list { margin-top: 15px; max-height: 300px; overflow-y: auto; }
+        .track-list { margin-top: 15px; }
         .track-item { 
             background: #353b48; padding: 10px; margin-bottom: 8px; 
-            border-radius: 6px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+            border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
         }
-        .track-name { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
-        .track-controls { display: flex; gap: 8px; font-size: 13px; align-items: center; flex-wrap: wrap; }
+        .track-name { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
+        .track-controls { display: flex; gap: 10px; font-size: 13px; align-items: center; }
         .checkbox-label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #0fbcf9; }
-        .volume-slider { width: 80px; margin: 0 4px; }
-        .volume-value { min-width: 35px; text-align: right; font-size: 11px; color: #bdc3c7; }
+        
+        /* New styling for Volume Slider */
+        .vol-slider { width: 80px !important; margin: 0 !important; padding: 0 !important; height: 15px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -123,9 +122,8 @@
         <div style="text-align: left; margin-bottom: 10px;"><strong>2. Record Raw Vocals:</strong></div>
         <button id="startBtn">Start Recording</button>
         <button id="stopBtn" disabled>Stop</button>
-        <div id="timerDisplay" class="timer">00:00.0</div>
         <canvas id="visualizer"></canvas>
-        <div id="statusText" class="status">Ready. Press Start to record Vocals.</div>
+        <div id="statusText" class="status">Ready. Press Start to record Vocals. <span id="recordTimer" style="display:none; color:#ff3f34;">(00:00)</span></div>
     </div>
 
     <div class="section" id="postProcessingSection">
@@ -133,19 +131,12 @@
             3. Post-Processing & Export
         </div>
         
-        <!-- Vocal track with volume slider -->
-        <div class="track-item" style="background: #2f3640; border: 1px solid #e1b12c; display: flex; flex-wrap: wrap; gap: 10px;">
-            <div class="track-name" style="color: #e1b12c; font-weight: bold;">🎤 Recorded Vocal</div>
-            <div class="track-controls" style="flex: 1; justify-content: space-between;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalMix" checked> In Mix</label>
-                    <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalFx" checked> Apply FX</label>
-                </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                    <span style="font-size:12px;">Vol:</span>
-                    <input type="range" id="vocalVolumeSlider" min="0" max="2" step="0.05" value="1.0" class="volume-slider" style="width:100px;">
-                    <span id="vocalVolumeVal" class="volume-value">1.00</span>
-                </div>
+        <div class="track-item" style="background: #2f3640; border: 1px solid #e1b12c;">
+            <div class="track-name" style="color: #e1b12c;">🎤 Recorded Vocal Track</div>
+            <div class="track-controls">
+                <input type="range" id="vocalVolume" class="vol-slider" min="0" max="2" step="0.05" value="1" title="Vocal Volume">
+                <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalMix" checked> In Mix</label>
+                <label class="checkbox-label" style="color: #e1b12c;"><input type="checkbox" id="vocalFx" checked> Apply FX</label>
             </div>
         </div>
 
@@ -195,29 +186,17 @@
             </div>
         </div>
 
-        <!-- Export options with bitrate selector -->
-        <div class="grid-3col" style="margin-top: 15px; align-items: end;">
+        <div class="grid-2col" style="margin-top: 15px;">
             <div>
-                <label>Format:</label>
+                <label>Export Format:</label>
                 <select id="formatSelect">
                     <option value="mp3">MP3</option>
                     <option value="wav" selected>WAV</option>
                 </select>
             </div>
-            <div>
-                <label>Bitrate (kbps):</label>
-                <select id="bitrateSelect">
-                    <option value="32">32</option>
-                    <option value="64">64</option>
-                    <option value="128">128</option>
-                    <option value="192" selected>192</option>
-                    <option value="256">256</option>
-                    <option value="320">320</option>
-                </select>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 5px;">
-                <button class="download-btn" id="dlMixedBtn">Download Mix</button>
-                <button class="download-btn" id="dlMicBtn">Download Vocals</button>
+            <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+                <button class="download-btn" id="dlMixedBtn">Download Mix (Selected Tracks)</button>
+                <button class="download-btn" id="dlMicBtn">Download Vocals Only</button>
             </div>
         </div>
     </div>
@@ -229,13 +208,15 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const statusText = document.getElementById('statusText');
-    const timerDisplay = document.getElementById('timerDisplay');
     const postProcessingSection = document.getElementById('postProcessingSection');
     const previewBtn = document.getElementById('previewBtn');
-    const formatSelect = document.getElementById('formatSelect');
-    const bitrateSelect = document.getElementById('bitrateSelect');
 
-    // UI Sliders for reverb
+    // Timer Variables
+    let recordTimerInterval;
+    let recordSeconds = 0;
+    const recordTimerEl = document.getElementById('recordTimer');
+
+    // UI Sliders
     const params = {
         room: document.getElementById('param_room'), predelay: document.getElementById('param_predelay'),
         rev: document.getElementById('param_rev'), damp: document.getElementById('param_damp'),
@@ -246,12 +227,10 @@
 
     // System Variables
     let audioCtx;
-    let backingTracks = []; // Array of {id, name, buffer, includeMix, applyFx, volume}
+    let backingTracks = []; // Array to hold multiple files
     let vocalBuffer = null;
-    let vocalVolume = 1.0;
     let micStream, micRecorder, micChunks = [];
     let analyser, animationId;
-    let recordingStartTime, timerInterval;
     
     let isPreviewPlaying = false;
     let previewSources = [];
@@ -272,7 +251,7 @@
     // 1. Upload Multiple Backing Tracks
     audioFilesInput.addEventListener('change', async (e) => {
         initAudioContext();
-        const files = Array.from(e.target.files).slice(0, 10);
+        const files = Array.from(e.target.files).slice(0, 10); // Limit to 10
         if (files.length > 0) {
             statusText.innerText = `Decoding ${files.length} track(s)... please wait.`;
             startBtn.disabled = true;
@@ -281,24 +260,27 @@
                 const arrayBuffer = await files[i].arrayBuffer();
                 const buffer = await audioCtx.decodeAudioData(arrayBuffer);
                 
+                // Check if track name already exists, if not add it
                 backingTracks.push({
                     id: Date.now() + i,
                     name: files[i].name,
                     buffer: buffer,
                     includeMix: true,
-                    applyFx: false,
-                    volume: 1.0
+                    applyFx: false, // By default, backing tracks have no FX
+                    volume: 1.0 // Default volume set to 100%
                 });
             }
             
             renderTrackList();
             startBtn.disabled = false;
             statusText.innerText = "Tracks ready. You can record Vocals or Preview Mix.";
+            
+            // Show processing section if tracks are loaded
             postProcessingSection.style.display = 'block';
         }
     });
 
-    // Render Track UI Checkboxes + Volume Slider
+    // Render Track UI Checkboxes
     function renderTrackList() {
         trackListContainer.innerHTML = '';
         backingTracks.forEach((track, index) => {
@@ -307,13 +289,9 @@
             div.innerHTML = `
                 <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
                 <div class="track-controls">
-                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> Mix</label>
-                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> FX</label>
-                    <div style="display: flex; align-items: center; gap:4px;">
-                        <span style="font-size:11px;">Vol</span>
-                        <input type="range" min="0" max="2" step="0.05" value="${track.volume}" class="volume-slider" oninput="updateTrackVolume(${index}, this.value)">
-                        <span id="vol_${index}" class="volume-value">${track.volume.toFixed(2)}</span>
-                    </div>
+                    <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" onchange="updateTrackVolume(${index}, this.value)" title="Track Volume">
+                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
+                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
                     <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
                 </div>
             `;
@@ -322,19 +300,8 @@
     }
 
     window.updateTrack = (index, prop, value) => { backingTracks[index][prop] = value; };
-    window.updateTrackVolume = (index, val) => { 
-        backingTracks[index].volume = parseFloat(val); 
-        document.getElementById(`vol_${index}`).innerText = parseFloat(val).toFixed(2);
-    };
+    window.updateTrackVolume = (index, val) => { backingTracks[index].volume = parseFloat(val); };
     window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); };
-
-    // Vocal volume slider
-    const vocalSlider = document.getElementById('vocalVolumeSlider');
-    const vocalVal = document.getElementById('vocalVolumeVal');
-    vocalSlider.addEventListener('input', (e) => {
-        vocalVolume = parseFloat(e.target.value);
-        vocalVal.innerText = vocalVolume.toFixed(2);
-    });
 
     // 2. Start Raw Recording
     startBtn.addEventListener('click', async () => {
@@ -368,25 +335,35 @@
 
             micRecorder.start();
             startBtn.disabled = true; stopBtn.disabled = false; audioFilesInput.disabled = true;
-            statusText.innerText = `🔴 Recording Raw Vocals...`;
+            statusText.childNodes[0].nodeValue = `🔴 Recording Raw Vocals... `;
             statusText.style.color = "#ff3f34";
 
-            // Start Timer
-            recordingStartTime = Date.now();
-            timerInterval = setInterval(updateTimer, 100);
+            // Timer Start
+            recordSeconds = 0;
+            recordTimerEl.style.display = 'inline';
+            recordTimerEl.innerText = "(00:00)";
+            recordTimerInterval = setInterval(() => {
+                recordSeconds++;
+                let m = Math.floor(recordSeconds / 60).toString().padStart(2, '0');
+                let s = (recordSeconds % 60).toString().padStart(2, '0');
+                recordTimerEl.innerText = `(${m}:${s})`;
+            }, 1000);
 
-            // Stop preview if playing
+            // If preview was playing, stop it
             if(isPreviewPlaying) previewBtn.click();
             
-            // Play ALL backing tracks for monitoring (respecting volume, ignoring includeMix)
+            // Play ALL tracks for singer (regardless of 'In Mix' status)
             previewSources = [];
             backingTracks.forEach(track => {
                 const src = audioCtx.createBufferSource();
                 src.buffer = track.buffer;
+                
                 const gainNode = audioCtx.createGain();
-                gainNode.gain.setValueAtTime(track.volume, audioCtx.currentTime);
+                gainNode.gain.value = track.volume;
+                
                 src.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
+                
                 src.start(0);
                 previewSources.push(src);
             });
@@ -396,34 +373,27 @@
         }
     });
 
-    // Timer update
-    function updateTimer() {
-        const elapsed = (Date.now() - recordingStartTime) / 1000;
-        const mins = Math.floor(elapsed / 60);
-        const secs = Math.floor(elapsed % 60);
-        const tenth = Math.floor((elapsed % 1) * 10);
-        timerDisplay.innerText = `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}.${tenth}`;
-    }
-
     // 3. Stop Recording
     stopBtn.addEventListener('click', () => {
         if (micRecorder && micRecorder.state !== 'inactive') micRecorder.stop();
         
-        // Stop monitoring tracks
+        // Timer Stop
+        clearInterval(recordTimerInterval);
+        recordTimerEl.style.display = 'none';
+
+        // Stop playing backing tracks
         previewSources.forEach(src => { try { src.stop(); } catch(e){} });
         previewSources = [];
-
-        clearInterval(timerInterval);
-        timerDisplay.innerText = '00:00.0';
 
         if (micStream) micStream.getTracks().forEach(track => track.stop());
         cancelAnimationFrame(animationId);
         drawFlatLine();
         startBtn.disabled = false; stopBtn.disabled = true; audioFilesInput.disabled = false;
-        statusText.innerText = "Processing recording...";
+        statusText.childNodes[0].nodeValue = "Processing recording...";
+        statusText.style.color = "#ffdd59";
     });
 
-    // --- DSP LOGIC (unchanged) ---
+    // --- DSP LOGIC ---
     function dBToLinear(db) { return Math.pow(10, db / 20); }
 
     function createFXBus(context, outputNode) {
@@ -501,7 +471,7 @@
         if (isPreviewPlaying && liveDSP) applyDSPParams(liveDSP);
     });
 
-    // --- PREVIEW PLAYBACK (with volume) ---
+    // --- PREVIEW PLAYBACK ---
     previewBtn.addEventListener('click', () => {
         if (!vocalBuffer && backingTracks.length === 0) return;
 
@@ -518,34 +488,41 @@
         
         let vocalMix = document.getElementById('vocalMix').checked;
         let vocalFx = document.getElementById('vocalFx').checked;
+        let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
-        // Play Vocal with volume
+        // Play Vocal
         if (vocalBuffer && vocalMix) {
             const vSrc = audioCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
+            
             const vGain = audioCtx.createGain();
-            vGain.gain.setValueAtTime(vocalVolume, audioCtx.currentTime);
+            vGain.gain.value = vocalVol;
+            
             vSrc.connect(vGain);
             if (vocalFx) vGain.connect(liveDSP.input);
             else vGain.connect(audioCtx.destination);
+            
             vSrc.start(0);
             previewSources.push(vSrc);
             
             vSrc.onended = () => { 
-                if (isPreviewPlaying) previewBtn.click();
+                if (isPreviewPlaying) previewBtn.click(); // auto stop
             };
         }
 
-        // Play Selected Backing Tracks with volume
+        // Play Selected Backing Tracks
         backingTracks.forEach(track => {
-            if(track.includeMix) {
+            if(track.includeMix) { // Only play if included in mix
                 const bSrc = audioCtx.createBufferSource();
                 bSrc.buffer = track.buffer;
+                
                 const bGain = audioCtx.createGain();
-                bGain.gain.setValueAtTime(track.volume, audioCtx.currentTime);
+                bGain.gain.value = track.volume;
+                
                 bSrc.connect(bGain);
                 if (track.applyFx) bGain.connect(liveDSP.input);
                 else bGain.connect(audioCtx.destination);
+                
                 bSrc.start(0);
                 previewSources.push(bSrc);
             }
@@ -557,12 +534,12 @@
         }
     });
 
-    // --- EXPORT (with bitrate) ---
+    // --- EXPORT ---
     document.getElementById('dlMixedBtn').addEventListener('click', () => exportAudio('mix'));
     document.getElementById('dlMicBtn').addEventListener('click', () => exportAudio('vocal'));
 
     async function exportAudio(mode) {
-        if (isPreviewPlaying) previewBtn.click();
+        if (isPreviewPlaying) previewBtn.click(); // Stop preview
 
         let renderVocals = (mode === 'vocal' || (mode === 'mix' && document.getElementById('vocalMix').checked)) && vocalBuffer;
         let renderTracks = mode === 'mix' ? backingTracks.filter(t => t.includeMix) : [];
@@ -571,50 +548,54 @@
             alert("No tracks selected for export!"); return;
         }
 
-        const format = formatSelect.value;
-        const bitrate = parseInt(bitrateSelect.value, 10); // for MP3
-        statusText.innerText = `Rendering ${format.toUpperCase()}... please wait.`;
+        const format = document.getElementById('formatSelect').value;
+        statusText.childNodes[0].nodeValue = `Rendering ${format.toUpperCase()}... please wait.`;
         statusText.style.color = "#ffdd59";
 
+        // Calculate max length
         let maxLen = renderVocals ? vocalBuffer.length : 0;
         renderTracks.forEach(t => { if(t.buffer.length > maxLen) maxLen = t.buffer.length; });
         maxLen += audioCtx.sampleRate * 3; // Reverb tail
 
         const offlineCtx = new OfflineAudioContext(2, maxLen, audioCtx.sampleRate);
         const offlineDSP = createFXBus(offlineCtx, offlineCtx.destination);
+        let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
-        // Render Vocal with volume
+        // Render Vocal
         if (renderVocals) {
             const vSrc = offlineCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
+            
             const vGain = offlineCtx.createGain();
-            vGain.gain.value = vocalVolume;
+            vGain.gain.value = vocalVol;
+            
             vSrc.connect(vGain);
             if (document.getElementById('vocalFx').checked) vGain.connect(offlineDSP.input);
             else vGain.connect(offlineCtx.destination);
+            
             vSrc.start(0);
         }
 
-        // Render Tracks with volume
+        // Render Tracks
         renderTracks.forEach(track => {
             const bSrc = offlineCtx.createBufferSource();
             bSrc.buffer = track.buffer;
+            
             const bGain = offlineCtx.createGain();
             bGain.gain.value = track.volume;
+            
             bSrc.connect(bGain);
             if (track.applyFx) bGain.connect(offlineDSP.input);
             else bGain.connect(offlineCtx.destination);
+            
             bSrc.start(0);
         });
 
         const renderedBuffer = await offlineCtx.startRendering();
 
         let finalBlob;
-        if (format === 'wav') {
-            finalBlob = audioBufferToWav(renderedBuffer);
-        } else {
-            finalBlob = await encodeMp3(renderedBuffer, bitrate);
-        }
+        if (format === 'wav') finalBlob = audioBufferToWav(renderedBuffer);
+        else finalBlob = await encodeMp3(renderedBuffer);
 
         const url = URL.createObjectURL(finalBlob);
         const a = document.createElement('a');
@@ -625,17 +606,15 @@
         a.click();
         URL.revokeObjectURL(url);
 
-        statusText.innerText = "Export successfully completed!";
+        statusText.childNodes[0].nodeValue = "Export successfully completed!";
         statusText.style.color = "#05c46b";
     }
 
-    // --- Format Converters (updated MP3 with bitrate) ---
+    // --- Format Converters ---
     function audioBufferToWav(buffer) {
         let numOfChan = buffer.numberOfChannels, length = buffer.length * numOfChan * 2 + 44,
             bufferArray = new ArrayBuffer(length), view = new DataView(bufferArray),
             channels = [], i, sample, offset = 0, pos = 0;
-        function setUint16(data) { view.setUint16(offset, data, true); offset += 2; }
-        function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
         setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
         setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
         setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
@@ -650,22 +629,20 @@
             pos++;
         }
         return new Blob([bufferArray], {type: "audio/wav"});
+        function setUint16(data) { view.setUint16(offset, data, true); offset += 2; }
+        function setUint32(data) { view.setUint32(offset, data, true); offset += 4; }
     }
 
-    async function encodeMp3(audioBuffer, bitrate = 192) {
+    async function encodeMp3(audioBuffer) {
         if (!window.lamejs) return audioBufferToWav(audioBuffer);
         const channels = audioBuffer.numberOfChannels;
-        // Use selected bitrate (lamejs expects kbps as number)
-        const mp3encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, bitrate); 
-        const mp3Data = []; 
-        const sampleBlockSize = 1152;
+        const mp3encoder = new lamejs.Mp3Encoder(channels, audioBuffer.sampleRate, 192); 
+        const mp3Data = []; const sampleBlockSize = 1152;
         const left = audioBuffer.getChannelData(0);
         const right = channels > 1 ? audioBuffer.getChannelData(1) : left;
-        const leftInt16 = new Int16Array(left.length); 
-        const rightInt16 = new Int16Array(right.length);
+        const leftInt16 = new Int16Array(left.length); const rightInt16 = new Int16Array(right.length);
         for (let i = 0; i < left.length; i++) {
-            leftInt16[i] = left[i] * 32767.5; 
-            rightInt16[i] = right[i] * 32767.5;
+            leftInt16[i] = left[i] * 32767.5; rightInt16[i] = right[i] * 32767.5;
         }
         for (let i = 0; i < left.length; i += sampleBlockSize) {
             const leftChunk = leftInt16.subarray(i, i + sampleBlockSize);
