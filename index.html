@@ -510,6 +510,15 @@
                 <button class="pitch-tool-btn" id="ptool_undo" onclick="pitchUndo()">↩ Undo</button>
                 <button class="pitch-tool-btn" id="ptool_redo" onclick="pitchRedo()">↪ Redo</button>
                 <button class="pitch-tool-btn" id="ptool_reset" onclick="resetPitchEdits()">⊗ Reset</button>
+                <!-- Drag Sensitivity -->
+                <div style="display:flex;align-items:center;gap:5px;margin-left:4px;">
+                    <span style="font-size:10px;color:#808e9b;white-space:nowrap;">Sensitivity:</span>
+                    <input type="range" id="pitchSensitivity" min="1" max="20" value="4" step="1"
+                        style="width:70px;margin:0;padding:0;height:14px;"
+                        oninput="document.getElementById('pitchSensVal').innerText=this.value"
+                        title="Drag sensitivity — কম মানে মসৃণ fine tuning">
+                    <span id="pitchSensVal" style="font-size:10px;color:#0fbcf9;min-width:14px;">4</span>
+                </div>
                 <span class="pitch-status" id="pitchStatusLabel">—</span>
             </div>
 
@@ -536,8 +545,32 @@
                 </label>
             </div>
 
+            <!-- Piano Roll Navigation: Zoom + Scroll (EQ-এর মতো) -->
+            <div style="display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin-bottom: 6px;">
+                <!-- Zoom Out H + Scroll Left -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                    <button onclick="pitchZoomH(-1)" style="flex:none;width:auto;padding:3px 14px;margin:0;font-size:13px;background:#2c3e50;color:#ffdd59;border:1px solid #ffdd59;border-radius:6px;cursor:pointer;" title="Horizontal Zoom Out">🔍−</button>
+                    <button onmousedown="startPitchScroll('left')" onmouseup="stopPitchScroll()" onmouseleave="stopPitchScroll()" ontouchstart="startPitchScroll('left');event.preventDefault();" ontouchend="stopPitchScroll();" style="flex:none;width:auto;padding:5px 18px;margin:0;font-size:16px;background:#353b48;color:#0fbcf9;border:1px solid #0fbcf9;border-radius:6px;cursor:pointer;">◀</button>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+                    <!-- Zoom In V + Scroll Up -->
+                    <button onclick="pitchZoomV(-1)" style="flex:none;width:auto;padding:3px 14px;margin:0;font-size:13px;background:#2c3e50;color:#05c46b;border:1px solid #05c46b;border-radius:6px;cursor:pointer;" title="Vertical Zoom In (more rows)">↕+</button>
+                    <span style="font-size:10px;color:#808e9b;text-align:center;" id="pitchZoomLabel">স্ক্রল / জুম</span>
+                    <button onmousedown="startPitchScroll('down')" onmouseup="stopPitchScroll()" onmouseleave="stopPitchScroll()" ontouchstart="startPitchScroll('down');event.preventDefault();" ontouchend="stopPitchScroll();" style="flex:none;width:auto;padding:3px 14px;margin:0;font-size:13px;background:#353b48;color:#05c46b;border:1px solid #05c46b;border-radius:6px;cursor:pointer;">▼</button>
+                </div>
+                <!-- Zoom In H + Scroll Right -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+                    <button onclick="pitchZoomH(1)" style="flex:none;width:auto;padding:3px 14px;margin:0;font-size:13px;background:#2c3e50;color:#ffdd59;border:1px solid #ffdd59;border-radius:6px;cursor:pointer;" title="Horizontal Zoom In">🔍+</button>
+                    <button onmousedown="startPitchScroll('right')" onmouseup="stopPitchScroll()" onmouseleave="stopPitchScroll()" ontouchstart="startPitchScroll('right');event.preventDefault();" ontouchend="stopPitchScroll();" style="flex:none;width:auto;padding:5px 18px;margin:0;font-size:16px;background:#353b48;color:#0fbcf9;border:1px solid #0fbcf9;border-radius:6px;cursor:pointer;">▶</button>
+                </div>
+            </div>
+            <!-- Vertical scroll up button (above canvas) -->
+            <div style="display:flex;justify-content:center;margin-bottom:2px;">
+                <button onmousedown="startPitchScroll('up')" onmouseup="stopPitchScroll()" onmouseleave="stopPitchScroll()" ontouchstart="startPitchScroll('up');event.preventDefault();" ontouchend="stopPitchScroll();" style="flex:none;width:auto;padding:3px 28px;margin:0;font-size:13px;background:#353b48;color:#05c46b;border:1px solid #05c46b;border-radius:6px;cursor:pointer;">▲</button>
+            </div>
+
             <!-- Piano Roll Canvas -->
-            <div id="pitchScrollWrapper">
+            <div id="pitchScrollWrapper" style="overflow:auto; max-height:300px; border-radius:6px; scrollbar-color:#485460 #101418; scrollbar-width:thin;">
                 <div style="position:relative;">
                     <canvas id="pitchCanvas"></canvas>
                 </div>
@@ -2131,7 +2164,10 @@
     window.addEventListener('mousemove', (e) => {
         if (!isDraggingBlob || !selectedBlob) return;
         const pos = getPitchEventPos(e);
-        const deltaMidi = (dragStartY - pos.y) / PE_ROW_H;
+        // Sensitivity: slider 1=raw (1px=1/14 semitone), 20=very slow (1px=1/280 semitone)
+        const sens = parseFloat((document.getElementById('pitchSensitivity') || {value:4}).value);
+        const pixelsPerSemitone = PE_ROW_H * sens;
+        const deltaMidi = (dragStartY - pos.y) / pixelsPerSemitone;
         let newMidi = hzToMidi(dragStartHz) + deltaMidi;
 
         // Scale snap
@@ -2177,7 +2213,9 @@
     window.addEventListener('touchmove', (e) => {
         if (!isDraggingBlob || !selectedBlob) return;
         const pos = getPitchEventPos(e);
-        const deltaMidi = (dragStartY - pos.y) / PE_ROW_H;
+        const sens = parseFloat((document.getElementById('pitchSensitivity') || {value:4}).value);
+        const pixelsPerSemitone = PE_ROW_H * sens;
+        const deltaMidi = (dragStartY - pos.y) / pixelsPerSemitone;
         let newMidi = Math.max(PE_MIN_NOTE, Math.min(PE_MAX_NOTE-1, hzToMidi(dragStartHz) + deltaMidi));
         selectedBlob.currentHz = midiToHz(newMidi);
         drawPitchEditor();
@@ -2368,6 +2406,142 @@
             initPitchEditor();
         }
     }, 1000);
+
+    // --- PITCH EDITOR ZOOM + SCROLL ---
+    let pitchZoomHLevel = 1.0; // horizontal zoom multiplier
+    let pitchZoomVLevel = 1.0; // vertical (row height) zoom multiplier
+    let pitchScrollIntervalId = null;
+    const PE_ROW_H_BASE = 14; // original row height
+
+    window.pitchZoomH = function(dir) {
+        const step = 0.35;
+        pitchZoomHLevel = Math.max(0.3, Math.min(5.0, pitchZoomHLevel + dir * step * pitchZoomHLevel));
+        // Update canvas width based on zoom
+        const wrapper = document.getElementById('pitchScrollWrapper');
+        const baseW = Math.max(900, wrapper ? wrapper.clientWidth : 900);
+        PE_CANVAS_W = Math.round(baseW * pitchZoomHLevel);
+        const canvas = document.getElementById('pitchCanvas');
+        if (canvas) {
+            canvas.width = PE_CANVAS_W;
+            canvas.style.width = PE_CANVAS_W + 'px';
+        }
+        const inner = canvas ? canvas.parentElement : null;
+        if (inner) inner.style.width = PE_CANVAS_W + 'px';
+        updatePitchZoomLabel();
+        drawPitchEditor();
+    };
+
+    window.pitchZoomV = function(dir) {
+        const step = 0.3;
+        pitchZoomVLevel = Math.max(0.4, Math.min(3.0, pitchZoomVLevel + dir * step * pitchZoomVLevel));
+        // Adjust row height
+        const newRowH = Math.round(PE_ROW_H_BASE * pitchZoomVLevel);
+        // Override PE_ROW_H dynamically via canvas height recalculation
+        const canvas = document.getElementById('pitchCanvas');
+        if (canvas) {
+            canvas.height = PE_NOTE_COUNT * newRowH;
+            canvas.style.height = canvas.height + 'px';
+        }
+        updatePitchZoomLabel();
+        // Redraw with updated row height — use local override
+        drawPitchEditorWithRowH(newRowH);
+    };
+
+    function updatePitchZoomLabel() {
+        const lbl = document.getElementById('pitchZoomLabel');
+        if (lbl) lbl.innerText = `H:${Math.round(pitchZoomHLevel*100)}% V:${Math.round(pitchZoomVLevel*100)}%`;
+    }
+
+    window.startPitchScroll = function(dir) {
+        stopPitchScroll();
+        pitchScrollIntervalId = setInterval(() => {
+            const wrapper = document.getElementById('pitchScrollWrapper');
+            if (!wrapper) return;
+            const step = 25;
+            if (dir === 'left')  wrapper.scrollLeft -= step;
+            if (dir === 'right') wrapper.scrollLeft += step;
+            if (dir === 'up')    wrapper.scrollTop  -= step;
+            if (dir === 'down')  wrapper.scrollTop  += step;
+        }, 16);
+    };
+
+    window.stopPitchScroll = function() {
+        if (pitchScrollIntervalId) { clearInterval(pitchScrollIntervalId); pitchScrollIntervalId = null; }
+    };
+
+    // Draw with custom row height (for vertical zoom)
+    function drawPitchEditorWithRowH(rowH) {
+        if (!pitchCanvas) return;
+        const W = pitchCanvas.width, H = pitchCanvas.height;
+        const ctx = pitchCtx;
+        ctx.clearRect(0, 0, W, H);
+
+        function midiToYv(midi) { return (PE_MAX_NOTE - midi) * rowH; }
+
+        for (let note = PE_MIN_NOTE; note < PE_MAX_NOTE; note++) {
+            const y = midiToYv(note);
+            const semInOct = note % 12;
+            const isBlack = [1,3,6,8,10].includes(semInOct);
+            ctx.fillStyle = isBlack ? '#0d1117' : '#111820';
+            ctx.fillRect(PE_PIANO_W, y, W - PE_PIANO_W, rowH);
+            if (scaleSnap !== 'none') {
+                const intervals = SCALE_INTERVALS[scaleSnap];
+                const inScale = intervals && intervals.includes((note - rootKey + 120) % 12);
+                if (inScale) { ctx.fillStyle = 'rgba(15,188,249,0.04)'; ctx.fillRect(PE_PIANO_W, y, W - PE_PIANO_W, rowH); }
+            }
+            ctx.strokeStyle = '#1e272e'; ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(PE_PIANO_W, y); ctx.lineTo(W, y); ctx.stroke();
+
+            const semInOctP = note % 12;
+            const isBlackP = [1,3,6,8,10].includes(semInOctP);
+            ctx.fillStyle = isBlackP ? '#1a1a2e' : '#2c3e50';
+            ctx.fillRect(0, y + 0.5, PE_PIANO_W - 2, rowH - 1);
+            if (semInOctP === 0) {
+                ctx.fillStyle = '#718093'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left';
+                ctx.fillText('C' + (Math.floor(note/12)-1), 2, y + rowH - 3);
+            }
+        }
+
+        if (vocalBuffer) {
+            const total = vocalBuffer.length;
+            const dur = vocalBuffer.duration;
+            const gridStep = dur > 10 ? 2 : 1;
+            for (let t = 0; t <= dur; t += gridStep) {
+                const x = sampleToX(t * vocalBuffer.sampleRate, total);
+                ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+                ctx.fillStyle = '#485460'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillText(t + 's', x, H - 2);
+            }
+        }
+
+        pitchBlobs.forEach(blob => {
+            if (!vocalBuffer) return;
+            const total = vocalBuffer.length;
+            const x1 = sampleToX(blob.startSample, total);
+            const x2 = sampleToX(blob.endSample, total);
+            const midi = hzToMidi(blob.currentHz);
+            const y = midiToYv(Math.round(midi));
+            const isSelected = selectedBlob && selectedBlob.id === blob.id;
+            const blobW = Math.max(x2 - x1, 4);
+            const grad = ctx.createLinearGradient(x1, y, x2, y + rowH);
+            grad.addColorStop(0, isSelected ? '#ffd32a' : '#f0932b');
+            grad.addColorStop(0.5, isSelected ? '#ffdd59' : '#eb4d4b');
+            grad.addColorStop(1, isSelected ? '#f9ca24' : '#6f1e51');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(x1+1, y+1, blobW-2, rowH-2, 3) : ctx.rect(x1+1, y+1, blobW-2, rowH-2);
+            ctx.fill();
+            if (blobW > 30 && blob.currentHz > 0) {
+                const noteName = SEMITONES[Math.round(hzToMidi(blob.currentHz)) % 12];
+                const octave = Math.floor(Math.round(hzToMidi(blob.currentHz))/12) - 1;
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'left';
+                ctx.fillText(noteName + octave, x1 + 3, y + rowH - 3);
+            }
+            if (isSelected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(x1+1, y+1, blobW-2, rowH-2); }
+        });
+        ctx.textAlign = 'left';
+    }
 
     })(); // end pitch editor IIFE
 </script>
