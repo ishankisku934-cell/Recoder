@@ -774,7 +774,7 @@
         let vocalFx = document.getElementById('vocalFx').checked;
         let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
-        // Play Vocal from seekOffset
+        // Play Vocal — সবসময় 0 থেকে শুরু (vocal seekOffset থেকে রেকর্ড হয়েছে, তাই offset 0)
         if (vocalBuffer && vocalMix) {
             const vSrc = audioCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
@@ -786,7 +786,7 @@
             const vDest = vocalFx ? liveDSP.input : audioCtx.destination;
             if (!applyEQToChain(audioCtx, vGain, vDest)) vGain.connect(vDest);
             
-            vSrc.start(0, seekOffsetSeconds); // ← seekOffset
+            vSrc.start(0); // ← vocal সবসময় 0 থেকে
             previewSources.push(vSrc);
             
             vSrc.onended = () => { 
@@ -815,7 +815,9 @@
         if(previewSources.length > 0) {
             isPreviewPlaying = true;
             previewBtn.innerText = "⏸ Stop Preview";
-            transportStartTime = audioCtx.currentTime;
+            // Vocal 0 থেকে বাজছে, তাই transport-ও 0 থেকে শুরু
+            const previewTransportOffset = vocalBuffer ? 0 : seekOffsetSeconds;
+            transportStartTime = audioCtx.currentTime - previewTransportOffset;
             startTransportAnim();
         }
     });
