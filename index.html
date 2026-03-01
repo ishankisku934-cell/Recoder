@@ -168,6 +168,36 @@
         
         .vol-slider { width: 80px !important; margin: 0 !important; padding: 0 !important; height: 15px; cursor: pointer; }
 
+        /* --- TRANSPORT / TIMELINE BAR --- */
+        .transport-bar {
+            background: #101418;
+            border: 1px solid #485460;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 10px;
+        }
+        .transport-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .transport-time { font-size: 12px; color: #0fbcf9; font-family: monospace; white-space: nowrap; }
+        .seek-bar-wrap { position: relative; flex: 1; height: 18px; display: flex; align-items: center; }
+        .seek-track { width: 100%; height: 4px; background: #2c3e50; border-radius: 2px; position: relative; cursor: pointer; }
+        .seek-fill { height: 100%; background: #0fbcf9; border-radius: 2px; width: 0%; pointer-events: none; }
+        .seek-thumb { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #0fbcf9; left: 0%; cursor: pointer; }
+        .transport-label { font-size: 11px; color: #808e9b; margin-top: 2px; text-align: center; }
+
+        /* Track play preview button */
+        .track-play-btn {
+            padding: 2px 8px !important;
+            margin: 0 !important;
+            font-size: 13px !important;
+            background: #05c46b !important;
+            color: white !important;
+            border-radius: 4px !important;
+            flex: none !important;
+            width: auto !important;
+            min-width: 32px;
+        }
+        .track-play-btn.playing { background: #ff3f34 !important; }
+
         /* --- MOBILE RESPONSIVE CSS --- */
         @media (max-width: 600px) {
             .container { padding: 15px; }
@@ -231,6 +261,21 @@
             <button id="stopBtn" disabled>Stop</button>
         </div>
         <canvas id="visualizer"></canvas>
+
+        <!-- GLOBAL TRANSPORT / TIMELINE BAR -->
+        <div class="transport-bar" id="transportBar" style="display:none;">
+            <div class="transport-top">
+                <span class="transport-time" id="transportCurrent">00:00</span>
+                <div class="seek-bar-wrap" id="seekBarWrap">
+                    <div class="seek-track" id="seekTrack">
+                        <div class="seek-fill" id="seekFill"></div>
+                        <div class="seek-thumb" id="seekThumb"></div>
+                    </div>
+                </div>
+                <span class="transport-time" id="transportTotal">00:00</span>
+            </div>
+            <div class="transport-label" id="transportLabel">▶ Seek করুন — যেকোনো position থেকে Record / Preview শুরু করা যাবে</div>
+        </div>
         <div id="statusText" class="status">Ready. Press Start to record Vocals. <span id="recordTimer" style="display:none; color:#ff3f34;">(00:00)</span></div>
     </div>
 
@@ -384,6 +429,17 @@
     let previewSources = [];
     let liveDSP = null;
 
+    // --- Transport / Seek State ---
+    let seekOffsetSeconds = 0;       // যেখান থেকে শুরু হবে (seconds)
+    let transportDuration = 0;       // total duration of longest track
+    let transportStartTime = 0;      // audioCtx.currentTime যখন playback শুরু হয়
+    let transportAnimId = null;
+
+    // --- Individual Track Preview State ---
+    let trackPreviewSource = null;   // currently previewing single track source
+    let trackPreviewIndex = -1;      // which track index is previewing
+    let trackPreviewStartTime = 0;   // audioCtx.currentTime when track preview started
+
     // Canvas Setup
     const canvas = document.getElementById('visualizer');
     const canvasCtx = canvas.getContext('2d');
@@ -423,6 +479,9 @@
             startBtn.disabled = false;
             statusText.innerText = "Tracks ready. You can record Vocals or Preview Mix.";
             
+            // Update transport duration = longest track
+            updateTransportDuration();
+
             // Show processing section if tracks are loaded
             postProcessingSection.style.display = 'block';
         }
@@ -437,6 +496,7 @@
             div.innerHTML = `
                 <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
                 <div class="track-controls">
+                    <button class="track-play-btn" id="tpbtn_${index}" onclick="toggleTrackPreview(${index})">▶</button>
                     <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" onchange="updateTrackVolume(${index}, this.value)" title="Track Volume">
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
@@ -449,7 +509,7 @@
 
     window.updateTrack = (index, prop, value) => { backingTracks[index][prop] = value; };
     window.updateTrackVolume = (index, val) => { backingTracks[index].volume = parseFloat(val); };
-    window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); };
+    window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); updateTransportDuration(); };
 
     // 2. Start Raw Recording
     startBtn.addEventListener('click', async () => {
@@ -482,6 +542,7 @@
                 postProcessingSection.style.display = 'block'; 
                 statusText.innerText = "Vocal saved! Select FX and Mix options below.";
                 statusText.style.color = "#0fbcf9";
+                updateTransportDuration(); // vocal duration reflect করো
                 postProcessingSection.scrollIntoView({ behavior: "smooth" });
             };
 
@@ -503,8 +564,9 @@
 
             // If preview was playing, stop it
             if(isPreviewPlaying) previewBtn.click();
+            stopTrackPreview(); // stop individual track preview too
             
-            // Play ALL tracks for singer (regardless of 'In Mix' status)
+            // Play ALL tracks for singer from seekOffset position
             previewSources = [];
             backingTracks.forEach(track => {
                 const src = audioCtx.createBufferSource();
@@ -516,9 +578,12 @@
                 src.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
-                src.start(0);
+                src.start(0, seekOffsetSeconds); // ← seekOffset থেকে শুরু
                 previewSources.push(src);
             });
+            // Transport animation during recording
+            transportStartTime = audioCtx.currentTime;
+            startTransportAnim();
 
         } catch (err) {
             statusText.innerText = "Error accessing mic: " + err.message;
@@ -536,6 +601,7 @@
         // Stop playing backing tracks
         previewSources.forEach(src => { try { src.stop(); } catch(e){} });
         previewSources = [];
+        stopTransportAnim();
 
         if (micStream) micStream.getTracks().forEach(track => track.stop());
         cancelAnimationFrame(animationId);
@@ -633,6 +699,7 @@
             liveEQFilters = [];
             isPreviewPlaying = false;
             previewBtn.innerText = "▶ Play / Pause Preview";
+            stopTransportAnim();
             return;
         }
 
@@ -644,7 +711,7 @@
         let vocalFx = document.getElementById('vocalFx').checked;
         let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
-        // Play Vocal
+        // Play Vocal from seekOffset
         if (vocalBuffer && vocalMix) {
             const vSrc = audioCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
@@ -656,7 +723,7 @@
             const vDest = vocalFx ? liveDSP.input : audioCtx.destination;
             if (!applyEQToChain(audioCtx, vGain, vDest)) vGain.connect(vDest);
             
-            vSrc.start(0);
+            vSrc.start(0, seekOffsetSeconds); // ← seekOffset
             previewSources.push(vSrc);
             
             vSrc.onended = () => { 
@@ -664,9 +731,9 @@
             };
         }
 
-        // Play Selected Backing Tracks
+        // Play Selected Backing Tracks from seekOffset
         backingTracks.forEach(track => {
-            if(track.includeMix) { // Only play if included in mix
+            if(track.includeMix) {
                 const bSrc = audioCtx.createBufferSource();
                 bSrc.buffer = track.buffer;
                 
@@ -677,7 +744,7 @@
                 const bDest = track.applyFx ? liveDSP.input : audioCtx.destination;
                 if (!applyEQToChain(audioCtx, bGain, bDest)) bGain.connect(bDest);
                 
-                bSrc.start(0);
+                bSrc.start(0, seekOffsetSeconds); // ← seekOffset
                 previewSources.push(bSrc);
             }
         });
@@ -685,6 +752,8 @@
         if(previewSources.length > 0) {
             isPreviewPlaying = true;
             previewBtn.innerText = "⏸ Stop Preview";
+            transportStartTime = audioCtx.currentTime;
+            startTransportAnim();
         }
     });
 
@@ -715,7 +784,7 @@
         const offlineDSP = createFXBus(offlineCtx, offlineCtx.destination);
         let vocalVol = parseFloat(document.getElementById('vocalVolume').value);
 
-        // Render Vocal
+        // Render Vocal from seekOffset
         if (renderVocals) {
             const vSrc = offlineCtx.createBufferSource();
             vSrc.buffer = vocalBuffer;
@@ -727,10 +796,10 @@
             const vDest2 = document.getElementById('vocalFx').checked ? offlineDSP.input : offlineCtx.destination;
             if (!applyEQToChain(offlineCtx, vGain, vDest2)) vGain.connect(vDest2);
             
-            vSrc.start(0);
+            vSrc.start(0); // vocal সবসময় 0 থেকে — কারণ vocal-ই seekOffset থেকে রেকর্ড হয়েছে
         }
 
-        // Render Tracks
+        // Render Tracks from seekOffset alignment
         renderTracks.forEach(track => {
             const bSrc = offlineCtx.createBufferSource();
             bSrc.buffer = track.buffer;
@@ -742,7 +811,7 @@
             const bDest3 = track.applyFx ? offlineDSP.input : offlineCtx.destination;
             if (!applyEQToChain(offlineCtx, bGain, bDest3)) bGain.connect(bDest3);
             
-            bSrc.start(0);
+            bSrc.start(0, seekOffsetSeconds); // ← backing track seekOffset থেকে শুরু, vocal এর সাথে sync
         });
 
         const renderedBuffer = await offlineCtx.startRendering();
@@ -1135,6 +1204,147 @@
             document.getElementById('refreshOverlay').classList.add('show');
         }
     });
+
+    // --- TRANSPORT / SEEK SYSTEM ---
+    function fmtTime(sec) {
+        sec = Math.max(0, Math.floor(sec));
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    function updateTransportDuration() {
+        // Duration = longest backing track or vocal
+        let maxDur = 0;
+        backingTracks.forEach(t => { if (t.buffer.duration > maxDur) maxDur = t.buffer.duration; });
+        if (vocalBuffer && vocalBuffer.duration > maxDur) maxDur = vocalBuffer.duration;
+        transportDuration = maxDur;
+
+        const bar = document.getElementById('transportBar');
+        if (maxDur > 0) {
+            bar.style.display = 'block';
+            document.getElementById('transportTotal').innerText = fmtTime(maxDur);
+            // Clamp seekOffset
+            if (seekOffsetSeconds > maxDur) seekOffsetSeconds = 0;
+            updateSeekUI(seekOffsetSeconds);
+        } else {
+            bar.style.display = 'none';
+        }
+    }
+
+    function updateSeekUI(sec) {
+        if (transportDuration <= 0) return;
+        const pct = Math.min(1, sec / transportDuration) * 100;
+        document.getElementById('seekFill').style.width = pct + '%';
+        document.getElementById('seekThumb').style.left = pct + '%';
+        document.getElementById('transportCurrent').innerText = fmtTime(sec);
+    }
+
+    function startTransportAnim() {
+        stopTransportAnim();
+        function tick() {
+            const elapsed = (audioCtx ? audioCtx.currentTime : 0) - transportStartTime;
+            const cur = seekOffsetSeconds + elapsed;
+            updateSeekUI(Math.min(cur, transportDuration));
+            if (cur < transportDuration) {
+                transportAnimId = requestAnimationFrame(tick);
+            } else {
+                stopTransportAnim();
+            }
+        }
+        transportAnimId = requestAnimationFrame(tick);
+    }
+
+    function stopTransportAnim() {
+        if (transportAnimId) { cancelAnimationFrame(transportAnimId); transportAnimId = null; }
+    }
+
+    // Seek bar drag
+    (function initSeekBar() {
+        let seeking = false;
+        function getSeekSec(clientX) {
+            const track = document.getElementById('seekTrack');
+            const rect = track.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return pct * transportDuration;
+        }
+        function doSeek(sec) {
+            // Stop any active playback before seeking
+            if (isPreviewPlaying) previewBtn.click();
+            stopTrackPreview();
+            seekOffsetSeconds = Math.max(0, Math.min(transportDuration, sec));
+            updateSeekUI(seekOffsetSeconds);
+        }
+        document.getElementById('seekTrack').addEventListener('mousedown', (e) => {
+            seeking = true; doSeek(getSeekSec(e.clientX)); e.preventDefault();
+        });
+        window.addEventListener('mousemove', (e) => { if (seeking) { doSeek(getSeekSec(e.clientX)); } });
+        window.addEventListener('mouseup', () => { seeking = false; });
+        // Touch
+        document.getElementById('seekTrack').addEventListener('touchstart', (e) => {
+            seeking = true; doSeek(getSeekSec(e.touches[0].clientX)); e.preventDefault();
+        }, { passive: false });
+        window.addEventListener('touchmove', (e) => { if (seeking) doSeek(getSeekSec(e.touches[0].clientX)); }, { passive: false });
+        window.addEventListener('touchend', () => { seeking = false; });
+    })();
+
+    // --- INDIVIDUAL TRACK PREVIEW ---
+    function stopTrackPreview() {
+        if (trackPreviewSource) {
+            try { trackPreviewSource.stop(); } catch(e) {}
+            trackPreviewSource = null;
+        }
+        stopTransportAnim();
+        // Reset all play buttons
+        document.querySelectorAll('.track-play-btn').forEach(b => {
+            b.innerText = '▶';
+            b.classList.remove('playing');
+        });
+        trackPreviewIndex = -1;
+    }
+
+    window.toggleTrackPreview = function(index) {
+        initAudioContext();
+
+        // If same track is playing → stop
+        if (trackPreviewIndex === index && trackPreviewSource) {
+            stopTrackPreview();
+            return;
+        }
+
+        // Stop any other preview/playback
+        stopTrackPreview();
+        if (isPreviewPlaying) previewBtn.click();
+
+        const track = backingTracks[index];
+        const src = audioCtx.createBufferSource();
+        src.buffer = track.buffer;
+
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = track.volume;
+        src.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        src.start(0, seekOffsetSeconds); // seekOffset থেকে শুরু
+        trackPreviewSource = src;
+        trackPreviewIndex = index;
+        trackPreviewStartTime = audioCtx.currentTime;
+
+        // Update duration for transport
+        if (track.buffer.duration > transportDuration) {
+            transportDuration = track.buffer.duration;
+            document.getElementById('transportTotal').innerText = fmtTime(transportDuration);
+            document.getElementById('transportBar').style.display = 'block';
+        }
+        startTransportAnim();
+
+        const btn = document.getElementById('tpbtn_' + index);
+        if (btn) { btn.innerText = '⏹'; btn.classList.add('playing'); }
+
+        src.onended = () => {
+            if (trackPreviewIndex === index) stopTrackPreview();
+        };
+    };
 
     // --- EQ Scroll Control ---
     let scrollInterval = null;
