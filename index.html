@@ -667,7 +667,12 @@
         
         document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        
+        // FIX: Remove the temporary anchor tag and delay URL revocation
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 250);
 
         statusText.childNodes[0].nodeValue = "Export successfully completed!";
         statusText.style.color = "#05c46b";
