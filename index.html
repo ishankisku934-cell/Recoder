@@ -443,10 +443,9 @@
     let transportStartTime = 0;      // audioCtx.currentTime যখন playback শুরু হয়
     let transportAnimId = null;
 
-    // --- Individual Track Preview State ---
-    let trackPreviewSource = null;   // currently previewing single track source
-    let trackPreviewIndex = -1;      // which track index is previewing
-    let trackPreviewStartTime = 0;   // audioCtx.currentTime when track preview started
+    // --- Individual Track Preview State (Multi-track support) ---
+    // trackPlayers: Map of index → { src, gainNode, animId, startTime, startOffset }
+    const trackPlayers = new Map();
 
     // Canvas Setup
     const canvas = document.getElementById('visualizer');
@@ -501,17 +500,59 @@
         backingTracks.forEach((track, index) => {
             const div = document.createElement('div');
             div.className = 'track-item';
+            div.style.flexDirection = 'column';
+            div.style.alignItems = 'stretch';
+            div.style.gap = '6px';
             div.innerHTML = `
-                <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
-                <div class="track-controls">
-                    <button class="track-play-btn" id="tpbtn_${index}" onclick="toggleTrackPreview(${index})">▶</button>
-                    <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" oninput="updateTrackVolume(${index}, this.value)" title="Track Volume">
-                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
-                    <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
-                    <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                    <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
+                    <div class="track-controls">
+                        <button class="track-play-btn" id="tpbtn_${index}" onclick="toggleTrackPreview(${index})">▶</button>
+                        <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" oninput="updateTrackVolume(${index}, this.value)" title="Track Volume">
+                        <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
+                        <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
+                        <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
+                    </div>
+                </div>
+                <div id="tp_bar_${index}" style="display:none; align-items:center; gap:6px; padding: 0 2px;">
+                    <span id="tp_cur_${index}" style="font-size:11px; color:#0fbcf9; font-family:monospace; min-width:36px;">00:00</span>
+                    <div style="flex:1; height:4px; background:#2c3e50; border-radius:2px; cursor:pointer; position:relative;" id="tp_track_${index}">
+                        <div id="tp_fill_${index}" style="height:100%; background:#0fbcf9; border-radius:2px; width:0%; pointer-events:none;"></div>
+                        <div id="tp_thumb_${index}" style="position:absolute; top:50%; transform:translate(-50%,-50%); width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #0fbcf9; left:0%; pointer-events:none;"></div>
+                    </div>
+                    <span id="tp_tot_${index}" style="font-size:11px; color:#718093; font-family:monospace; min-width:36px; text-align:right;">00:00</span>
                 </div>
             `;
             trackListContainer.appendChild(div);
+
+            // Per-track seek bar drag
+            setTimeout(() => {
+                const seekEl = document.getElementById('tp_track_' + index);
+                if (!seekEl) return;
+                function seekTo(clientX) {
+                    const rect = seekEl.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                    const dur = backingTracks[index] ? backingTracks[index].buffer.duration : 0;
+                    const newOffset = pct * dur;
+                    // If this track is playing, restart from new position
+                    if (trackPlayers.has(index)) {
+                        const wasPlaying = true;
+                        stopSingleTrack(index);
+                        seekOffsetSeconds = newOffset;
+                        if (wasPlaying) startSingleTrack(index);
+                    } else {
+                        seekOffsetSeconds = newOffset;
+                    }
+                    updateTrackBar(index, newOffset, dur);
+                }
+                let dragging = false;
+                seekEl.addEventListener('mousedown', (e) => { dragging = true; seekTo(e.clientX); e.preventDefault(); });
+                window.addEventListener('mousemove', (e) => { if (dragging) seekTo(e.clientX); });
+                window.addEventListener('mouseup', () => { dragging = false; });
+                seekEl.addEventListener('touchstart', (e) => { dragging = true; seekTo(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
+                window.addEventListener('touchmove', (e) => { if (dragging) seekTo(e.touches[0].clientX); }, { passive: false });
+                window.addEventListener('touchend', () => { dragging = false; });
+            }, 0);
         });
     }
 
@@ -519,12 +560,17 @@
     window.updateTrackVolume = (index, val) => {
         const v = parseFloat(val);
         backingTracks[index].volume = v;
-        // Real-time update: recording চলাকালীন বা individual preview চলাকালীন
-        if (backingTracks[index].liveGainNode) {
+        // Real-time: trackPlayers map থেকে gainNode নাও
+        const player = trackPlayers.get(index);
+        if (player && player.gainNode && audioCtx) {
+            player.gainNode.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+        }
+        // recording চলাকালীন liveGainNode
+        if (backingTracks[index].liveGainNode && audioCtx) {
             backingTracks[index].liveGainNode.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
         }
     };
-    window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); updateTransportDuration(); };
+    window.removeTrack = (index) => { stopSingleTrack(index); backingTracks.splice(index, 1); renderTrackList(); updateTransportDuration(); };
 
     // 2. Start Raw Recording
     startBtn.addEventListener('click', async () => {
@@ -579,7 +625,7 @@
 
             // If preview was playing, stop it
             if(isPreviewPlaying) previewBtn.click();
-            stopTrackPreview(); // stop individual track preview too
+            stopAllTrackPreviews(); // stop all individual track previews
             
             // Play ALL tracks for singer from seekOffset position
             previewSources = [];
@@ -1203,7 +1249,7 @@
         }
 
         // Real-time update: liveEQFilters সরাসরি eqPoints এর সাথে index-match করে update করি
-        if ((isPreviewPlaying || trackPreviewSource) && audioCtx && liveEQFilters.length > 0) {
+        if ((isPreviewPlaying || trackPlayers.size > 0) && audioCtx && liveEQFilters.length > 0) {
             const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
             const now = audioCtx.currentTime;
             liveEQFilters.forEach((f, i) => {
@@ -1297,7 +1343,7 @@
         function doSeek(sec) {
             // Stop any active playback before seeking
             if (isPreviewPlaying) previewBtn.click();
-            stopTrackPreview();
+            stopAllTrackPreviews();
             seekOffsetSeconds = Math.max(0, Math.min(transportDuration, sec));
             updateSeekUI(seekOffsetSeconds);
         }
@@ -1314,40 +1360,39 @@
         window.addEventListener('touchend', () => { seeking = false; });
     })();
 
-    // --- INDIVIDUAL TRACK PREVIEW ---
-    function stopTrackPreview() {
-        if (trackPreviewSource) {
-            try { trackPreviewSource.stop(); } catch(e) {}
-            trackPreviewSource = null;
-        }
-        // Clear liveGainNode for the previewing track
-        if (trackPreviewIndex >= 0 && backingTracks[trackPreviewIndex]) {
-            backingTracks[trackPreviewIndex].liveGainNode = null;
-        }
-        liveEQFilters = []; // EQ filters clear
-        stopTransportAnim();
-        // Reset all play buttons
-        document.querySelectorAll('.track-play-btn').forEach(b => {
-            b.innerText = '▶';
-            b.classList.remove('playing');
-        });
-        trackPreviewIndex = -1;
+    // --- INDIVIDUAL TRACK PREVIEW (Multi-track) ---
+
+    function updateTrackBar(index, current, duration) {
+        const fill = document.getElementById('tp_fill_' + index);
+        const thumb = document.getElementById('tp_thumb_' + index);
+        const cur = document.getElementById('tp_cur_' + index);
+        const tot = document.getElementById('tp_tot_' + index);
+        if (!fill) return;
+        const pct = duration > 0 ? Math.min(100, (current / duration) * 100) : 0;
+        fill.style.width = pct + '%';
+        thumb.style.left = pct + '%';
+        if (cur) cur.innerText = fmtTime(current);
+        if (tot) tot.innerText = fmtTime(duration);
     }
 
-    window.toggleTrackPreview = function(index) {
-        initAudioContext();
-
-        // If same track is playing → stop
-        if (trackPreviewIndex === index && trackPreviewSource) {
-            stopTrackPreview();
-            return;
+    function stopSingleTrack(index) {
+        const player = trackPlayers.get(index);
+        if (player) {
+            try { player.src.stop(); } catch(e) {}
+            if (player.animId) cancelAnimationFrame(player.animId);
+            trackPlayers.delete(index);
         }
+        if (backingTracks[index]) backingTracks[index].liveGainNode = null;
+        const btn = document.getElementById('tpbtn_' + index);
+        if (btn) { btn.innerText = '▶'; btn.classList.remove('playing'); }
+        const bar = document.getElementById('tp_bar_' + index);
+        if (bar) bar.style.display = 'none';
+    }
 
-        // Stop any other preview/playback
-        stopTrackPreview();
-        if (isPreviewPlaying) previewBtn.click();
-
+    function startSingleTrack(index) {
         const track = backingTracks[index];
+        if (!track) return;
+
         const src = audioCtx.createBufferSource();
         src.buffer = track.buffer;
 
@@ -1356,31 +1401,59 @@
         track.liveGainNode = gainNode;
         src.connect(gainNode);
 
-        // EQ chain apply করি individual preview-এও
-        liveEQFilters = [];
+        // EQ chain
         if (!applyEQToChain(audioCtx, gainNode, audioCtx.destination)) {
             gainNode.connect(audioCtx.destination);
         }
 
-        src.start(0, seekOffsetSeconds);
-        trackPreviewSource = src;
-        trackPreviewIndex = index;
-        trackPreviewStartTime = audioCtx.currentTime;
+        const offset = Math.min(seekOffsetSeconds, track.buffer.duration);
+        src.start(0, offset);
 
-        // Update duration for transport
-        if (track.buffer.duration > transportDuration) {
-            transportDuration = track.buffer.duration;
-            document.getElementById('transportTotal').innerText = fmtTime(transportDuration);
-            document.getElementById('transportBar').style.display = 'block';
+        const startCtxTime = audioCtx.currentTime;
+        const dur = track.buffer.duration;
+
+        // Show progress bar
+        const bar = document.getElementById('tp_bar_' + index);
+        if (bar) { bar.style.display = 'flex'; }
+        updateTrackBar(index, offset, dur);
+
+        // Animation loop for this track
+        function tick() {
+            const elapsed = audioCtx.currentTime - startCtxTime;
+            const current = Math.min(offset + elapsed, dur);
+            updateTrackBar(index, current, dur);
+            if (current < dur && trackPlayers.has(index)) {
+                trackPlayers.get(index).animId = requestAnimationFrame(tick);
+            }
         }
-        startTransportAnim();
+        const animId = requestAnimationFrame(tick);
+
+        trackPlayers.set(index, { src, gainNode, animId, startTime: startCtxTime, startOffset: offset });
 
         const btn = document.getElementById('tpbtn_' + index);
         if (btn) { btn.innerText = '⏹'; btn.classList.add('playing'); }
 
         src.onended = () => {
-            if (trackPreviewIndex === index) stopTrackPreview();
+            if (trackPlayers.has(index) && trackPlayers.get(index).src === src) {
+                stopSingleTrack(index);
+            }
         };
+    }
+
+    // Stop all individual track previews
+    function stopAllTrackPreviews() {
+        [...trackPlayers.keys()].forEach(idx => stopSingleTrack(idx));
+    }
+
+    window.toggleTrackPreview = function(index) {
+        initAudioContext();
+        if (trackPlayers.has(index)) {
+            // Same track চলছে → stop
+            stopSingleTrack(index);
+        } else {
+            // নতুন track শুরু করো — অন্যগুলো বন্ধ করার দরকার নেই!
+            startSingleTrack(index);
+        }
     };
 
     // --- EQ Scroll Control ---
