@@ -145,7 +145,18 @@
     </div>
 
     <div class="section" style="text-align: center;">
-        <div style="text-align: left; margin-bottom: 10px;"><strong>2. Record Raw Vocals:</strong></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="text-align: left;"><strong>2. Record Raw Vocals:</strong></div>
+            <div style="font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                <label>Rec Bitrate:</label>
+                <select id="recordBitrateSelect" style="width: auto; padding: 4px; margin: 0;">
+                    <option value="128000">128 kbps (Low CPU)</option>
+                    <option value="192000">192 kbps</option>
+                    <option value="256000" selected>256 kbps (Standard)</option>
+                    <option value="320000">320 kbps (High)</option>
+                </select>
+            </div>
+        </div>
         <div class="button-group">
             <button id="startBtn">Start Recording</button>
             <button id="stopBtn" disabled>Stop</button>
@@ -223,7 +234,7 @@
                 </select>
             </div>
             <div>
-                <label>MP3 Bitrate:</label>
+                <label>Export MP3 Bitrate:</label>
                 <select id="bitrateSelect">
                     <option value="128">128 kbps</option>
                     <option value="192" selected>192 kbps (Standard)</option>
@@ -357,7 +368,11 @@
             drawWaveform();
 
             micChunks = [];
-            micRecorder = new MediaRecorder(micStream, { audioBitsPerSecond: 256000 });
+            
+            // Getting the selected recording bitrate
+            const recBitrate = parseInt(document.getElementById('recordBitrateSelect').value);
+            
+            micRecorder = new MediaRecorder(micStream, { audioBitsPerSecond: recBitrate });
             micRecorder.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
             
             micRecorder.onstop = async () => {
