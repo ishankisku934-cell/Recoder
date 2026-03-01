@@ -6,6 +6,11 @@
     <title>Post-Processing Web Audio Studio (Audacity Style)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
     <style>
+        /* Make sure padding and borders don't add to 100% width */
+        * {
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #1e272e;
@@ -15,7 +20,7 @@
             align-items: flex-start;
             min-height: 100vh;
             margin: 0;
-            padding: 20px;
+            padding: 15px; /* Slightly reduced for mobile */
         }
         .container {
             background-color: #2c3e50;
@@ -23,7 +28,7 @@
             border-radius: 12px;
             box-shadow: 0 15px 25px rgba(0,0,0,0.5);
             width: 100%;
-            max-width: 650px;
+            max-width: 650px; /* Keeps it perfectly sized on Laptops */
         }
         h2 { margin-top: 0; color: #0fbcf9; text-align: center; }
         .section {
@@ -43,12 +48,14 @@
             border: 1px solid #718093;
             background-color: #353b48;
             color: white;
-            box-sizing: border-box;
         }
         audio { width: 100%; margin-top: 10px; height: 35px; outline: none; }
+        
+        .button-group { display: flex; gap: 10px; }
         button {
+            flex: 1; /* Makes buttons share width evenly */
             padding: 10px 15px;
-            margin: 5px;
+            margin: 5px 0;
             border: none;
             border-radius: 6px;
             font-size: 14px;
@@ -56,8 +63,9 @@
             cursor: pointer;
             transition: all 0.3s ease;
         }
-        #startBtn { background-color: #05c46b; color: white; width: 47%; }
-        #stopBtn { background-color: #ff3f34; color: white; width: 47%; }
+        #startBtn { background-color: #05c46b; color: white; }
+        #stopBtn { background-color: #ff3f34; color: white; }
+        
         .action-btn { background-color: #0fbcf9; color: #1e272e; width: 100%; margin-top: 10px; }
         .action-btn:hover { background-color: #4bcffa; }
         .download-btn { background-color: #3c40c6; color: white; width: 100%; margin: 5px 0;}
@@ -101,10 +109,28 @@
         }
         .track-name { font-size: 13px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 250px; }
         .track-controls { display: flex; gap: 10px; font-size: 13px; align-items: center; }
-        .checkbox-label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #0fbcf9; }
+        .checkbox-label { display: flex; align-items: center; gap: 4px; cursor: pointer; color: #0fbcf9; white-space: nowrap; }
         
-        /* New styling for Volume Slider */
         .vol-slider { width: 80px !important; margin: 0 !important; padding: 0 !important; height: 15px; cursor: pointer; }
+
+        /* --- MOBILE RESPONSIVE CSS --- */
+        @media (max-width: 600px) {
+            .container { padding: 15px; }
+            .grid-2col { grid-template-columns: 1fr; gap: 5px; } /* Stack Export buttons vertically */
+            .slider-grid { grid-template-columns: 1fr; } /* Stack Reverb sliders vertically */
+            
+            .track-item { 
+                flex-direction: column; /* Stack track name and controls */
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .track-controls {
+                width: 100%;
+                justify-content: space-between;
+                flex-wrap: wrap; /* Let checkboxes wrap if screen is very narrow */
+            }
+            .vol-slider { width: 100px !important; }
+        }
     </style>
 </head>
 <body>
@@ -120,8 +146,10 @@
 
     <div class="section" style="text-align: center;">
         <div style="text-align: left; margin-bottom: 10px;"><strong>2. Record Raw Vocals:</strong></div>
-        <button id="startBtn">Start Recording</button>
-        <button id="stopBtn" disabled>Stop</button>
+        <div class="button-group">
+            <button id="startBtn">Start Recording</button>
+            <button id="stopBtn" disabled>Stop</button>
+        </div>
         <canvas id="visualizer"></canvas>
         <div id="statusText" class="status">Ready. Press Start to record Vocals. <span id="recordTimer" style="display:none; color:#ff3f34;">(00:00)</span></div>
     </div>
