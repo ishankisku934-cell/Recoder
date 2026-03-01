@@ -225,6 +225,24 @@
             </div>
         </div>
 
+        <!-- GRAPHIC EQ PANEL -->
+        <div class="effect-panel" style="margin-top: 15px;">
+            <label style="color: #0fbcf9; font-weight: bold;">
+                <input type="checkbox" id="eqToggle" checked> Enable Graphic EQ (Noise Reduction)
+            </label>
+            <div style="font-size: 11px; color: #808e9b; margin-top: 4px;">
+                Click on the EQ line to add control points. Drag points up/down to boost or cut frequencies. Right-click to remove a point.
+            </div>
+            <canvas id="eqCanvas" style="height: 140px; cursor: crosshair; margin-top: 10px;"></canvas>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 0 4px;">
+                <span>20Hz</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20kHz</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                <span style="font-size: 11px; color: #808e9b;">↑ Boost / ↓ Cut (dB range: +18 to -36)</span>
+                <button onclick="resetEQ()" style="padding: 4px 10px; margin: 0; font-size: 11px; background: #485460; color: white; flex: none; width: auto;">Reset EQ</button>
+            </div>
+        </div>
+
         <div class="grid-2col" style="margin-top: 15px;">
             <div>
                 <label>Export Format:</label>
@@ -552,8 +570,8 @@
             vGain.gain.value = vocalVol;
             
             vSrc.connect(vGain);
-            if (vocalFx) vGain.connect(liveDSP.input);
-            else vGain.connect(audioCtx.destination);
+            const vDest = vocalFx ? liveDSP.input : audioCtx.destination;
+            if (!applyEQToChain(audioCtx, vGain, vDest)) vGain.connect(vDest);
             
             vSrc.start(0);
             previewSources.push(vSrc);
@@ -623,8 +641,8 @@
             vGain.gain.value = vocalVol;
             
             vSrc.connect(vGain);
-            if (document.getElementById('vocalFx').checked) vGain.connect(offlineDSP.input);
-            else vGain.connect(offlineCtx.destination);
+            const vDest2 = document.getElementById('vocalFx').checked ? offlineDSP.input : offlineCtx.destination;
+            if (!applyEQToChain(offlineCtx, vGain, vDest2)) vGain.connect(vDest2);
             
             vSrc.start(0);
         }
@@ -653,26 +671,23 @@
             finalBlob = await encodeMp3(renderedBuffer, kbps);
         }
 
-        const url = URL.createObjectURL(finalBlob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        
-        // Generate Unique Timestamp (e.g., 20260301_115602)
+        // Generate Unique Timestamp
         const d = new Date();
         const timestamp = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2, '0')}${d.getDate().toString().padStart(2, '0')}_${d.getHours().toString().padStart(2, '0')}${d.getMinutes().toString().padStart(2, '0')}${d.getSeconds().toString().padStart(2, '0')}`;
+        const filename = mode === 'mix' ? `Final_Mix_${timestamp}.${format}` : `Processed_Vocal_${timestamp}.${format}`;
         
-        // Apply Timestamp to filename
-        a.download = mode === 'mix' ? `Final_Mix_${timestamp}.${format}` : `Processed_Vocal_${timestamp}.${format}`;
-        
-        document.body.appendChild(a);
-        a.click();
-        
-        // FIX: Remove the temporary anchor tag and delay URL revocation
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 250);
+        // FIX: Use FileReader to create data URL - avoids Chrome blocking repeated downloads
+        const reader = new FileReader();
+        reader.onload = function() {
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = reader.result;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => document.body.removeChild(a), 300);
+        };
+        reader.readAsDataURL(finalBlob);
 
         statusText.childNodes[0].nodeValue = "Export successfully completed!";
         statusText.style.color = "#05c46b";
@@ -721,6 +736,261 @@
         const mp3buf = mp3encoder.flush();
         if (mp3buf.length > 0) mp3Data.push(mp3buf);
         return new Blob(mp3Data, { type: 'audio/mp3' });
+    }
+
+    // --- GRAPHIC EQ ---
+    const eqCanvas = document.getElementById('eqCanvas');
+    const eqCtx = eqCanvas.getContext('2d');
+    
+    // EQ Points: {freq, gain} — freq in Hz, gain in dB
+    let eqPoints = [
+        { freq: 60, gain: 0 },
+        { freq: 250, gain: 0 },
+        { freq: 1000, gain: 0 },
+        { freq: 4000, gain: 0 },
+        { freq: 12000, gain: 0 },
+    ];
+    
+    const EQ_MIN_DB = -36;
+    const EQ_MAX_DB = 18;
+    const EQ_MIN_FREQ = 20;
+    const EQ_MAX_FREQ = 20000;
+    
+    function freqToX(freq) {
+        const logMin = Math.log10(EQ_MIN_FREQ);
+        const logMax = Math.log10(EQ_MAX_FREQ);
+        return ((Math.log10(freq) - logMin) / (logMax - logMin)) * eqCanvas.width;
+    }
+    
+    function xToFreq(x) {
+        const logMin = Math.log10(EQ_MIN_FREQ);
+        const logMax = Math.log10(EQ_MAX_FREQ);
+        return Math.pow(10, (x / eqCanvas.width) * (logMax - logMin) + logMin);
+    }
+    
+    function gainToY(gain) {
+        return ((EQ_MAX_DB - gain) / (EQ_MAX_DB - EQ_MIN_DB)) * eqCanvas.height;
+    }
+    
+    function yToGain(y) {
+        return EQ_MAX_DB - (y / eqCanvas.height) * (EQ_MAX_DB - EQ_MIN_DB);
+    }
+    
+    function drawEQ() {
+        eqCanvas.width = eqCanvas.offsetWidth;
+        const w = eqCanvas.width, h = eqCanvas.height;
+        eqCtx.clearRect(0, 0, w, h);
+        
+        // Background
+        eqCtx.fillStyle = '#101418';
+        eqCtx.fillRect(0, 0, w, h);
+        
+        // Grid lines
+        eqCtx.strokeStyle = '#1e272e';
+        eqCtx.lineWidth = 1;
+        // Horizontal (dB lines)
+        [-24, -12, 0, 6, 12].forEach(db => {
+            const y = gainToY(db);
+            eqCtx.beginPath();
+            eqCtx.moveTo(0, y); eqCtx.lineTo(w, y);
+            eqCtx.stroke();
+            eqCtx.fillStyle = '#485460';
+            eqCtx.font = '9px sans-serif';
+            eqCtx.fillText(db + 'dB', 3, y - 2);
+        });
+        
+        // 0 dB center line
+        eqCtx.strokeStyle = '#485460';
+        eqCtx.lineWidth = 1.5;
+        eqCtx.setLineDash([4, 4]);
+        const zeroY = gainToY(0);
+        eqCtx.beginPath(); eqCtx.moveTo(0, zeroY); eqCtx.lineTo(w, zeroY); eqCtx.stroke();
+        eqCtx.setLineDash([]);
+        
+        if (!document.getElementById('eqToggle').checked) {
+            // Draw flat line when disabled
+            eqCtx.strokeStyle = '#485460';
+            eqCtx.lineWidth = 2;
+            eqCtx.beginPath(); eqCtx.moveTo(0, zeroY); eqCtx.lineTo(w, zeroY); eqCtx.stroke();
+            return;
+        }
+        
+        // Sort points by frequency
+        const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
+        
+        // Draw EQ curve
+        eqCtx.strokeStyle = '#0fbcf9';
+        eqCtx.lineWidth = 2;
+        eqCtx.beginPath();
+        
+        // Start from left edge at gain of first point
+        eqCtx.moveTo(0, gainToY(sorted.length > 0 ? sorted[0].gain : 0));
+        
+        // Draw smooth curve through points
+        for (let i = 0; i < sorted.length; i++) {
+            const x = freqToX(sorted[i].freq);
+            const y = gainToY(sorted[i].gain);
+            if (i === 0) {
+                eqCtx.lineTo(x, y);
+            } else {
+                const prevX = freqToX(sorted[i-1].freq);
+                const prevY = gainToY(sorted[i-1].gain);
+                const cpX = (prevX + x) / 2;
+                eqCtx.bezierCurveTo(cpX, prevY, cpX, y, x, y);
+            }
+        }
+        // End at right edge
+        if (sorted.length > 0) eqCtx.lineTo(w, gainToY(sorted[sorted.length - 1].gain));
+        else eqCtx.lineTo(w, zeroY);
+        eqCtx.stroke();
+        
+        // Fill area under curve
+        eqCtx.lineTo(w, zeroY); eqCtx.lineTo(0, zeroY);
+        eqCtx.closePath();
+        eqCtx.fillStyle = 'rgba(15, 188, 249, 0.1)';
+        eqCtx.fill();
+        
+        // Draw control points
+        sorted.forEach(pt => {
+            const x = freqToX(pt.freq);
+            const y = gainToY(pt.gain);
+            eqCtx.beginPath();
+            eqCtx.arc(x, y, 7, 0, Math.PI * 2);
+            eqCtx.fillStyle = '#0fbcf9';
+            eqCtx.fill();
+            eqCtx.strokeStyle = '#fff';
+            eqCtx.lineWidth = 1.5;
+            eqCtx.stroke();
+            
+            // Label
+            eqCtx.fillStyle = '#fff';
+            eqCtx.font = 'bold 9px sans-serif';
+            eqCtx.textAlign = 'center';
+            const label = pt.freq >= 1000 ? (pt.freq/1000).toFixed(1) + 'k' : Math.round(pt.freq) + '';
+            eqCtx.fillText(label, x, y - 10);
+            eqCtx.fillText((pt.gain >= 0 ? '+' : '') + pt.gain.toFixed(1), x, y + 18);
+        });
+        eqCtx.textAlign = 'left';
+    }
+    
+    // EQ Drag logic
+    let dragPoint = null;
+    let isDraggingEQ = false;
+    
+    function getEQPoint(x, y) {
+        return eqPoints.find(pt => {
+            const px = freqToX(pt.freq);
+            const py = gainToY(pt.gain);
+            return Math.sqrt((px - x) ** 2 + (py - y) ** 2) < 12;
+        });
+    }
+    
+    function getEQEventPos(e) {
+        const rect = eqCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: (clientX - rect.left) * (eqCanvas.width / rect.width), 
+                 y: (clientY - rect.top) * (eqCanvas.height / rect.height) };
+    }
+    
+    eqCanvas.addEventListener('mousedown', (e) => {
+        const { x, y } = getEQEventPos(e);
+        dragPoint = getEQPoint(x, y);
+        if (!dragPoint) {
+            // Add new point
+            const freq = Math.max(EQ_MIN_FREQ, Math.min(EQ_MAX_FREQ, xToFreq(x)));
+            const gain = Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, yToGain(y)));
+            const newPt = { freq: Math.round(freq), gain: parseFloat(gain.toFixed(1)) };
+            eqPoints.push(newPt);
+            dragPoint = newPt;
+        }
+        isDraggingEQ = true;
+        drawEQ();
+        e.preventDefault();
+    });
+    
+    eqCanvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const { x, y } = getEQEventPos(e);
+        const pt = getEQPoint(x, y);
+        if (pt) {
+            eqPoints = eqPoints.filter(p => p !== pt);
+            drawEQ();
+        }
+    });
+    
+    window.addEventListener('mousemove', (e) => {
+        if (!isDraggingEQ || !dragPoint) return;
+        const { x, y } = getEQEventPos(e);
+        dragPoint.freq = Math.round(Math.max(EQ_MIN_FREQ, Math.min(EQ_MAX_FREQ, xToFreq(x))));
+        dragPoint.gain = parseFloat(Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, yToGain(y))).toFixed(1));
+        drawEQ();
+    });
+    
+    window.addEventListener('mouseup', () => { isDraggingEQ = false; dragPoint = null; });
+    
+    // Touch support
+    eqCanvas.addEventListener('touchstart', (e) => {
+        const { x, y } = getEQEventPos(e);
+        dragPoint = getEQPoint(x, y);
+        if (!dragPoint) {
+            const freq = Math.max(EQ_MIN_FREQ, Math.min(EQ_MAX_FREQ, xToFreq(x)));
+            const gain = Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, yToGain(y)));
+            const newPt = { freq: Math.round(freq), gain: parseFloat(gain.toFixed(1)) };
+            eqPoints.push(newPt);
+            dragPoint = newPt;
+        }
+        isDraggingEQ = true;
+        drawEQ();
+        e.preventDefault();
+    }, { passive: false });
+    
+    window.addEventListener('touchmove', (e) => {
+        if (!isDraggingEQ || !dragPoint) return;
+        const rect = eqCanvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        const x = (touch.clientX - rect.left) * (eqCanvas.width / rect.width);
+        const y = (touch.clientY - rect.top) * (eqCanvas.height / rect.height);
+        dragPoint.freq = Math.round(Math.max(EQ_MIN_FREQ, Math.min(EQ_MAX_FREQ, xToFreq(x))));
+        dragPoint.gain = parseFloat(Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, yToGain(y))).toFixed(1));
+        drawEQ();
+    }, { passive: false });
+    
+    window.addEventListener('touchend', () => { isDraggingEQ = false; dragPoint = null; });
+    
+    document.getElementById('eqToggle').addEventListener('change', drawEQ);
+    
+    window.resetEQ = function() {
+        eqPoints = [
+            { freq: 60, gain: 0 }, { freq: 250, gain: 0 }, { freq: 1000, gain: 0 },
+            { freq: 4000, gain: 0 }, { freq: 12000, gain: 0 },
+        ];
+        drawEQ();
+    };
+    
+    // Initialize EQ canvas
+    setTimeout(drawEQ, 100);
+    window.addEventListener('resize', drawEQ);
+    
+    // --- Apply EQ to audio graph ---
+    // Returns true if EQ was applied (caller should NOT also connect source), false if not applied
+    function applyEQToChain(context, sourceNode, destinationNode) {
+        if (!document.getElementById('eqToggle').checked || eqPoints.length === 0) {
+            return false; // caller should connect manually
+        }
+        const sorted = [...eqPoints].sort((a, b) => a.freq - b.freq);
+        const filters = sorted.map(pt => {
+            const f = context.createBiquadFilter();
+            f.type = 'peaking';
+            f.frequency.value = pt.freq;
+            f.gain.value = pt.gain;
+            f.Q.value = 1.5;
+            return f;
+        });
+        sourceNode.connect(filters[0]);
+        for (let i = 0; i < filters.length - 1; i++) filters[i].connect(filters[i+1]);
+        filters[filters.length - 1].connect(destinationNode);
+        return true; // EQ applied, do NOT connect source again
     }
 
     // --- Visualizer Drawing ---
