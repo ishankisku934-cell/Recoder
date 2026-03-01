@@ -233,7 +233,12 @@
             <div style="font-size: 11px; color: #808e9b; margin-top: 4px;">
                 Click on the EQ line to add control points. Drag points up/down to boost or cut frequencies. Right-click to remove a point.
             </div>
-            <div id="eqScrollWrapper" style="overflow-x: auto; overflow-y: hidden; margin-top: 10px; border-radius: 6px; scrollbar-color: #485460 #101418; scrollbar-width: thin;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 10px; margin-bottom: 4px;">
+                <button onmousedown="startScroll(-1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(-1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">◀</button>
+                <span style="font-size: 11px; color: #808e9b;">EQ ভিউ স্ক্রল করুন</span>
+                <button onmousedown="startScroll(1)" onmouseup="stopScroll()" onmouseleave="stopScroll()" ontouchstart="startScroll(1); event.preventDefault();" ontouchend="stopScroll();" style="flex: none; width: auto; padding: 5px 18px; margin: 0; font-size: 16px; background: #353b48; color: #0fbcf9; border: 1px solid #0fbcf9; border-radius: 6px; cursor: pointer;">▶</button>
+            </div>
+            <div id="eqScrollWrapper" style="overflow-x: auto; overflow-y: hidden; margin-top: 0; border-radius: 6px; scrollbar-color: #485460 #101418; scrollbar-width: thin;">
                 <div style="position: relative; width: 1200px;">
                     <canvas id="eqCanvas" style="height: 160px; cursor: crosshair; display: block; width: 1200px;"></canvas>
                     <div style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 2px 4px; background: #101418; border-radius: 0 0 6px 6px;">
@@ -1048,6 +1053,19 @@
             });
         }
     }
+
+    // --- EQ Scroll Control ---
+    let scrollInterval = null;
+    window.startScroll = function(direction) {
+        stopScroll();
+        scrollInterval = setInterval(() => {
+            const wrapper = document.getElementById('eqScrollWrapper');
+            wrapper.scrollLeft += direction * 20;
+        }, 16);
+    };
+    window.stopScroll = function() {
+        if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+    };
 
     // --- Visualizer Drawing ---
     function drawFlatLine() {
