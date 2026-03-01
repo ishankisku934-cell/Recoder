@@ -233,9 +233,13 @@
             <div style="font-size: 11px; color: #808e9b; margin-top: 4px;">
                 Click on the EQ line to add control points. Drag points up/down to boost or cut frequencies. Right-click to remove a point.
             </div>
-            <canvas id="eqCanvas" style="height: 140px; cursor: crosshair; margin-top: 10px;"></canvas>
-            <div style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 0 4px;">
-                <span>20Hz</span><span>50</span><span>100</span><span>200</span><span>500</span><span>1k</span><span>2k</span><span>5k</span><span>10k</span><span>20kHz</span>
+            <div id="eqScrollWrapper" style="overflow-x: auto; overflow-y: hidden; margin-top: 10px; border-radius: 6px; scrollbar-color: #485460 #101418; scrollbar-width: thin;">
+                <div style="position: relative; width: 1200px;">
+                    <canvas id="eqCanvas" style="height: 160px; cursor: crosshair; display: block; width: 1200px;"></canvas>
+                    <div style="display: flex; justify-content: space-between; font-size: 10px; color: #718093; padding: 2px 4px; background: #101418; border-radius: 0 0 6px 6px;">
+                        <span>20Hz</span><span>30</span><span>50</span><span>80</span><span>100</span><span>200</span><span>300</span><span>500</span><span>800</span><span>1k</span><span>2k</span><span>3k</span><span>5k</span><span>8k</span><span>10k</span><span>15k</span><span>20kHz</span>
+                    </div>
+                </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
                 <span style="font-size: 11px; color: #808e9b;">↑ Boost / ↓ Cut (dB range: +18 to -36)</span>
@@ -681,13 +685,24 @@
         const timestamp = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2, '0')}${d.getDate().toString().padStart(2, '0')}_${d.getHours().toString().padStart(2, '0')}${d.getMinutes().toString().padStart(2, '0')}${d.getSeconds().toString().padStart(2, '0')}`;
         const filename = mode === 'mix' ? `Final_Mix_${timestamp}.${format}` : `Processed_Vocal_${timestamp}.${format}`;
         
-        // FIX: Use FileReader to create data URL - avoids Chrome blocking repeated downloads
+        // Ask user to rename before downloading
+        const defaultName = filename.replace(/\.[^.]+$/, ''); // strip extension
+        const userInput = window.prompt('ফাইলের নাম দিন (File name):', defaultName);
+        if (userInput === null) {
+            // User cancelled
+            statusText.childNodes[0].nodeValue = "Download cancelled.";
+            statusText.style.color = "#808e9b";
+            return;
+        }
+        const finalName = (userInput.trim() || defaultName) + '.' + format;
+
+        // Use FileReader to create data URL - avoids Chrome blocking repeated downloads
         const reader = new FileReader();
         reader.onload = function() {
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = reader.result;
-            a.download = filename;
+            a.download = finalName;
             document.body.appendChild(a);
             a.click();
             setTimeout(() => document.body.removeChild(a), 300);
@@ -782,10 +797,9 @@
     }
     
     function drawEQ() {
-        // Get width from parent when canvas itself may be hidden
-        const parentWidth = eqCanvas.parentElement ? eqCanvas.parentElement.clientWidth : 500;
-        eqCanvas.width = parentWidth > 0 ? parentWidth : 500;
-        eqCanvas.height = 140;
+        // Fixed wide canvas for detailed frequency control
+        eqCanvas.width = 1200;
+        eqCanvas.height = 160;
         const w = eqCanvas.width, h = eqCanvas.height;
         eqCtx.clearRect(0, 0, w, h);
         
@@ -897,8 +911,10 @@
         const rect = eqCanvas.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: (clientX - rect.left) * (eqCanvas.width / rect.width), 
-                 y: (clientY - rect.top) * (eqCanvas.height / rect.height) };
+        // Canvas is always 1200px wide, but may appear scaled by CSS - use actual pixel coords
+        const scaleX = eqCanvas.width / rect.width;
+        const scaleY = eqCanvas.height / rect.height;
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
     }
     
     eqCanvas.addEventListener('mousedown', (e) => {
@@ -979,7 +995,6 @@
     };
     
     // Initialize EQ canvas - use MutationObserver to draw when section becomes visible
-    window.addEventListener('resize', drawEQ);
     const eqObserver = new MutationObserver(() => { drawEQ(); });
     eqObserver.observe(document.getElementById('postProcessingSection'), { attributes: true, attributeFilter: ['style'] });
     // Also try immediately and after short delay
