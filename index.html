@@ -216,6 +216,96 @@
             }
             .vol-slider { width: 100px !important; }
         }
+        /* --- PITCH EDITOR STYLES --- */
+        #pitchEditorSection {
+            display: none;
+            margin-top: 20px;
+        }
+        .pitch-editor-panel {
+            background: #101418;
+            border: 1px solid #0fbcf9;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        #pitchCanvas {
+            display: block;
+            background: #0a0e12;
+            border-radius: 6px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .pitch-controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        @media (max-width: 600px) {
+            .pitch-controls-grid { grid-template-columns: 1fr 1fr; }
+        }
+        .pitch-knob-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: #bdc3c7;
+        }
+        .pitch-knob-group input[type=range] {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        .pitch-knob-val {
+            color: #0fbcf9;
+            font-size: 12px;
+            font-weight: bold;
+            font-family: monospace;
+        }
+        .pitch-toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .pitch-tool-btn {
+            padding: 5px 12px !important;
+            margin: 0 !important;
+            font-size: 12px !important;
+            flex: none !important;
+            width: auto !important;
+            border-radius: 5px !important;
+            background: #353b48 !important;
+            color: #d2dae2 !important;
+            border: 1px solid #485460 !important;
+        }
+        .pitch-tool-btn.active {
+            background: #0fbcf9 !important;
+            color: #1e272e !important;
+            border-color: #0fbcf9 !important;
+        }
+        .pitch-status {
+            font-size: 11px;
+            color: #ffdd59;
+            margin-left: auto;
+            font-family: monospace;
+        }
+        #pitchScrollWrapper {
+            overflow-x: auto;
+            overflow-y: hidden;
+            border-radius: 6px;
+            scrollbar-color: #485460 #101418;
+            scrollbar-width: thin;
+        }
+        .piano-key-col {
+            display: flex;
+            flex-direction: column;
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
     </style>
 </head>
 <body>
@@ -399,6 +489,100 @@
         <div style="display: flex; flex-direction: column; justify-content: flex-end; margin-top: 10px;">
             <button class="download-btn" id="dlMixedBtn">Download Mix (Selected Tracks)</button>
             <button class="download-btn" id="dlMicBtn">Download Vocals Only</button>
+        </div>
+    </div>
+
+    <!-- ===== PITCH EDITOR SECTION ===== -->
+    <div id="pitchEditorSection" class="section">
+        <div style="font-size: 18px; font-weight: bold; color: #e1b12c; margin-bottom: 10px; border-bottom: 1px solid #485460; padding-bottom: 5px;">
+            🎵 4. Pitch Editor (Melodyne-Style)
+        </div>
+        <div style="font-size: 11px; color: #808e9b; margin-bottom: 10px;">
+            Vocal রেকর্ড করার পরে pitch blobs drag করে tune করুন। Live preview-তে তাৎক্ষণিক পরিবর্তন শোনা যাবে।
+        </div>
+
+        <div class="pitch-editor-panel">
+            <!-- Toolbar -->
+            <div class="pitch-toolbar">
+                <button class="pitch-tool-btn active" id="ptool_select" onclick="setPitchTool('select')">✦ Select</button>
+                <button class="pitch-tool-btn" id="ptool_move" onclick="setPitchTool('move')">↕ Move</button>
+                <button class="pitch-tool-btn" id="ptool_flatten" onclick="applyFlatten()">⟂ Flatten</button>
+                <button class="pitch-tool-btn" id="ptool_undo" onclick="pitchUndo()">↩ Undo</button>
+                <button class="pitch-tool-btn" id="ptool_redo" onclick="pitchRedo()">↪ Redo</button>
+                <button class="pitch-tool-btn" id="ptool_reset" onclick="resetPitchEdits()">⊗ Reset</button>
+                <span class="pitch-status" id="pitchStatusLabel">—</span>
+            </div>
+
+            <!-- Scale Snap + Key -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px; align-items:center; font-size:12px;">
+                <label style="color:#bdc3c7;">Scale Snap:</label>
+                <select id="pitchScaleSnap" style="width:auto; padding:4px; margin:0; font-size:12px;" onchange="updateScaleSnap()">
+                    <option value="none">None (Free)</option>
+                    <option value="major">Major</option>
+                    <option value="minor" selected>Minor</option>
+                    <option value="chromatic">Chromatic</option>
+                </select>
+                <label style="color:#bdc3c7;">Root Key:</label>
+                <select id="pitchRootKey" style="width:auto; padding:4px; margin:0; font-size:12px;" onchange="updateScaleSnap()">
+                    <option>C</option><option>C#</option><option>D</option><option>D#</option>
+                    <option>E</option><option>F</option><option selected>F#</option><option>G</option>
+                    <option>G#</option><option>A</option><option>A#</option><option>B</option>
+                </select>
+                <label style="color:#bdc3c7; margin-left:10px;">
+                    <input type="checkbox" id="preserveFormantToggle" checked onchange="updatePitchParams()"> Preserve Formant
+                </label>
+                <label style="color:#bdc3c7;">
+                    <input type="checkbox" id="abToggle" onchange="toggleAB()"> A/B Compare
+                </label>
+            </div>
+
+            <!-- Piano Roll Canvas -->
+            <div id="pitchScrollWrapper">
+                <div style="position:relative;">
+                    <canvas id="pitchCanvas"></canvas>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="pitch-controls-grid">
+                <div class="pitch-knob-group">
+                    <span>Fine Tune (cents)</span>
+                    <input type="range" id="pctrl_finetune" min="-100" max="100" value="0" step="1" oninput="onPitchCtrl('finetune',this.value)">
+                    <span class="pitch-knob-val" id="pval_finetune">0 ct</span>
+                </div>
+                <div class="pitch-knob-group">
+                    <span>Correction Strength</span>
+                    <input type="range" id="pctrl_strength" min="0" max="100" value="80" step="1" oninput="onPitchCtrl('strength',this.value)">
+                    <span class="pitch-knob-val" id="pval_strength">80%</span>
+                </div>
+                <div class="pitch-knob-group">
+                    <span>Formant Shift</span>
+                    <input type="range" id="pctrl_formant" min="-12" max="12" value="0" step="0.1" oninput="onPitchCtrl('formant',this.value)">
+                    <span class="pitch-knob-val" id="pval_formant">0.0 st</span>
+                </div>
+                <div class="pitch-knob-group">
+                    <span>Pitch Drift</span>
+                    <input type="range" id="pctrl_drift" min="0" max="100" value="30" step="1" oninput="onPitchCtrl('drift',this.value)">
+                    <span class="pitch-knob-val" id="pval_drift">30%</span>
+                </div>
+                <div class="pitch-knob-group">
+                    <span>Phase Smoothness</span>
+                    <input type="range" id="pctrl_phase" min="0" max="100" value="50" step="1" oninput="onPitchCtrl('phase',this.value)">
+                    <span class="pitch-knob-val" id="pval_phase">50%</span>
+                </div>
+                <div class="pitch-knob-group">
+                    <span>Pitch Modulation</span>
+                    <input type="range" id="pctrl_modulation" min="0" max="100" value="20" step="1" oninput="onPitchCtrl('modulation',this.value)">
+                    <span class="pitch-knob-val" id="pval_modulation">20%</span>
+                </div>
+            </div>
+
+            <!-- Playback -->
+            <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; align-items:center;">
+                <button class="action-btn" id="pitchPreviewBtn" style="margin:0; flex:none; width:auto; padding:8px 20px;" onclick="togglePitchPreview()">▶ Play Corrected Preview</button>
+                <button class="download-btn" id="pitchExportBtn" style="margin:0; flex:none; width:auto; padding:8px 20px;" onclick="exportCorrectedAudio()">⬇ Export Corrected Vocal</button>
+                <span id="pitchPlayStatus" style="font-size:11px; color:#ffdd59; font-family:monospace;"></span>
+            </div>
         </div>
     </div>
 </div>
@@ -1511,7 +1695,682 @@
         }
         canvasCtx.lineTo(canvas.width, canvas.height / 2); canvasCtx.stroke();
     }
-</script>
+    // ============================================================
+    // PITCH EDITOR ENGINE — Melodyne-style
+    // ============================================================
+    (function() {
 
+    // --- State ---
+    const SEMITONES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const SCALE_INTERVALS = {
+        major: [0,2,4,5,7,9,11],
+        minor: [0,2,3,5,7,8,10],
+        chromatic: [0,1,2,3,4,5,6,7,8,9,10,11],
+        none: null
+    };
+
+    let pitchBlobs = [];        // [{id, startSample, endSample, originalHz, currentHz, confidence, drift:[]}]
+    let pitchUndoStack = [];
+    let pitchRedoStack = [];
+    let currentTool = 'select';
+    let selectedBlob = null;
+    let dragStartY = 0;
+    let dragStartHz = 0;
+    let isDraggingBlob = false;
+    let pitchParams = { finetune:0, strength:80, formant:0, drift:30, phase:50, modulation:20 };
+    let scaleSnap = 'minor';
+    let rootKey = 6; // F#
+    let preserveFormant = true;
+    let abMode = false;
+    let abOriginalBlobs = [];
+    let pitchPreviewPlaying = false;
+    let pitchPreviewSource = null;
+    let pitchPreviewCtx = null;
+    let pitchEditorReady = false;
+
+    // Canvas setup
+    const PE_PIANO_W = 36;  // piano keys column width
+    const PE_MIN_NOTE = 36; // MIDI C2
+    const PE_MAX_NOTE = 84; // MIDI C6
+    const PE_NOTE_COUNT = PE_MAX_NOTE - PE_MIN_NOTE;
+    const PE_ROW_H = 14;
+    const PE_CANVAS_H = PE_NOTE_COUNT * PE_ROW_H;
+    let PE_CANVAS_W = 1200;
+    let viewOffsetX = 0;
+    let viewZoomX = 1.0;
+
+    const pitchCanvas = document.getElementById('pitchCanvas');
+    const pitchCtx = pitchCanvas.getContext('2d');
+
+    function midiToHz(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+    function hzToMidi(hz) { return hz > 0 ? 69 + 12 * Math.log2(hz / 440) : 0; }
+    function midiToY(midi) { return (PE_MAX_NOTE - midi) * PE_ROW_H; }
+    function yToMidi(y) { return PE_MAX_NOTE - y / PE_ROW_H; }
+    function sampleToX(sample, totalSamples) { return PE_PIANO_W + (sample / totalSamples) * (PE_CANVAS_W - PE_PIANO_W); }
+    function xToSample(x, totalSamples) { return ((x - PE_PIANO_W) / (PE_CANVAS_W - PE_PIANO_W)) * totalSamples; }
+
+    // --- Pitch Detection (YIN-inspired autocorrelation) ---
+    function detectPitch(buffer, sampleRate) {
+        const frameSize = 2048;
+        const hopSize = 512;
+        const frames = [];
+        const data = buffer.getChannelData(0);
+        const total = data.length;
+
+        for (let start = 0; start + frameSize <= total; start += hopSize) {
+            const frame = data.subarray(start, start + frameSize);
+            const hz = yin(frame, sampleRate);
+            const rms = computeRMS(frame);
+            frames.push({ start, end: Math.min(start + frameSize, total), hz, rms, confidence: hz > 0 ? 1 : 0 });
+        }
+        return frames;
+    }
+
+    function yin(frame, sr) {
+        const N = frame.length;
+        const half = N >> 1;
+        const d = new Float32Array(half);
+        let runSum = 0;
+        d[0] = 1;
+        for (let tau = 1; tau < half; tau++) {
+            let s = 0;
+            for (let i = 0; i < half; i++) {
+                const diff = frame[i] - frame[i + tau];
+                s += diff * diff;
+            }
+            d[tau] = s;
+            runSum += s;
+            d[tau] /= (runSum / tau) || 1;
+        }
+        // Find first dip below threshold
+        const threshold = 0.12;
+        for (let tau = 2; tau < half - 1; tau++) {
+            if (d[tau] < threshold && d[tau] < d[tau-1] && d[tau] < d[tau+1]) {
+                // Parabolic interpolation
+                const better = tau + (d[tau+1] - d[tau-1]) / (2 * (2*d[tau] - d[tau-1] - d[tau+1]));
+                const hz = sr / better;
+                if (hz > 60 && hz < 1400) return hz;
+            }
+        }
+        return 0;
+    }
+
+    function computeRMS(frame) {
+        let s = 0;
+        for (let i = 0; i < frame.length; i++) s += frame[i] * frame[i];
+        return Math.sqrt(s / frame.length);
+    }
+
+    // --- Note Segmentation: group frames into blobs ---
+    function segmentBlobs(frames, sampleRate) {
+        const blobs = [];
+        let current = null;
+        const SILENCE_THRESH = 0.005;
+        const PITCH_JUMP_THRESH = 3; // semitones
+
+        frames.forEach((f, i) => {
+            if (f.rms < SILENCE_THRESH || f.hz === 0) {
+                if (current) { blobs.push(finalizeBlob(current)); current = null; }
+                return;
+            }
+            if (!current) {
+                current = { frames: [f], startSample: f.start };
+            } else {
+                const lastHz = current.frames[current.frames.length-1].hz;
+                const semDiff = Math.abs(hzToMidi(f.hz) - hzToMidi(lastHz));
+                if (semDiff > PITCH_JUMP_THRESH) {
+                    blobs.push(finalizeBlob(current));
+                    current = { frames: [f], startSample: f.start };
+                } else {
+                    current.frames.push(f);
+                }
+            }
+        });
+        if (current) blobs.push(finalizeBlob(current));
+        return blobs;
+    }
+
+    function finalizeBlob(raw) {
+        const hzValues = raw.frames.map(f => f.hz).filter(h => h > 0);
+        const medianHz = hzValues.length ? hzValues.slice().sort((a,b)=>a-b)[Math.floor(hzValues.length/2)] : 0;
+        return {
+            id: Math.random().toString(36).slice(2),
+            startSample: raw.startSample,
+            endSample: raw.frames[raw.frames.length-1].end,
+            originalHz: medianHz,
+            currentHz: medianHz,
+            confidence: hzValues.length / raw.frames.length,
+            drift: raw.frames.map(f => f.hz > 0 ? (hzToMidi(f.hz) - hzToMidi(medianHz)) : 0)
+        };
+    }
+
+    // --- Initialize pitch editor from vocalBuffer ---
+    function initPitchEditor() {
+        if (!vocalBuffer) return;
+        document.getElementById('pitchEditorSection').style.display = 'block';
+
+        const sampleRate = vocalBuffer.sampleRate;
+        const frames = detectPitch(vocalBuffer, sampleRate);
+        pitchBlobs = segmentBlobs(frames, sampleRate);
+        abOriginalBlobs = JSON.parse(JSON.stringify(pitchBlobs));
+        pitchEditorReady = true;
+        pitchUndoStack = [];
+        pitchRedoStack = [];
+
+        resizePitchCanvas();
+        drawPitchEditor();
+        document.getElementById('pitchStatusLabel').innerText = `${pitchBlobs.length} notes detected`;
+    }
+
+    // Show pitch editor section when vocal is recorded
+    // Hook into existing onstop logic by watching vocalBuffer
+    const _origMicOnsave = setInterval(() => {
+        if (typeof vocalBuffer !== 'undefined' && vocalBuffer && !pitchEditorReady) {
+            clearInterval(_origMicOnsave);
+            initPitchEditor();
+        }
+    }, 500);
+
+    function resizePitchCanvas() {
+        const wrapper = document.getElementById('pitchScrollWrapper');
+        PE_CANVAS_W = Math.max(1200, wrapper.clientWidth);
+        pitchCanvas.width = PE_CANVAS_W;
+        pitchCanvas.height = PE_CANVAS_H;
+        pitchCanvas.style.width = PE_CANVAS_W + 'px';
+        pitchCanvas.style.height = PE_CANVAS_H + 'px';
+    }
+
+    // --- DRAW ---
+    function drawPitchEditor() {
+        if (!pitchCanvas) return;
+        const W = pitchCanvas.width, H = pitchCanvas.height;
+        const ctx = pitchCtx;
+        ctx.clearRect(0, 0, W, H);
+
+        // Background rows
+        for (let note = PE_MIN_NOTE; note < PE_MAX_NOTE; note++) {
+            const y = midiToY(note);
+            const semInOct = note % 12;
+            const isBlack = [1,3,6,8,10].includes(semInOct);
+            ctx.fillStyle = isBlack ? '#0d1117' : '#111820';
+            ctx.fillRect(PE_PIANO_W, y, W - PE_PIANO_W, PE_ROW_H);
+
+            // Scale highlight
+            if (scaleSnap !== 'none') {
+                const intervals = SCALE_INTERVALS[scaleSnap];
+                const inScale = intervals && intervals.includes((note - rootKey + 120) % 12);
+                if (inScale) {
+                    ctx.fillStyle = 'rgba(15,188,249,0.04)';
+                    ctx.fillRect(PE_PIANO_W, y, W - PE_PIANO_W, PE_ROW_H);
+                }
+            }
+
+            // Row separator
+            ctx.strokeStyle = '#1e272e';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath(); ctx.moveTo(PE_PIANO_W, y); ctx.lineTo(W, y); ctx.stroke();
+        }
+
+        // Piano keys
+        for (let note = PE_MIN_NOTE; note < PE_MAX_NOTE; note++) {
+            const y = midiToY(note);
+            const semInOct = note % 12;
+            const isBlack = [1,3,6,8,10].includes(semInOct);
+            ctx.fillStyle = isBlack ? '#1a1a2e' : '#2c3e50';
+            ctx.fillRect(0, y + 0.5, PE_PIANO_W - 2, PE_ROW_H - 1);
+
+            // Note name for C notes
+            if (semInOct === 0) {
+                ctx.fillStyle = '#718093';
+                ctx.font = '8px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText('C' + (Math.floor(note/12)-1), 2, y + PE_ROW_H - 3);
+            }
+        }
+
+        // Time grid lines
+        if (vocalBuffer) {
+            const total = vocalBuffer.length;
+            const dur = vocalBuffer.duration;
+            const gridStep = dur > 10 ? 2 : 1;
+            for (let t = 0; t <= dur; t += gridStep) {
+                const x = sampleToX(t * vocalBuffer.sampleRate, total);
+                ctx.strokeStyle = '#2c3e50';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+                ctx.fillStyle = '#485460';
+                ctx.font = '9px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(t + 's', x, H - 2);
+            }
+        }
+
+        // Draw blobs
+        pitchBlobs.forEach(blob => {
+            if (!vocalBuffer) return;
+            const total = vocalBuffer.length;
+            const x1 = sampleToX(blob.startSample, total);
+            const x2 = sampleToX(blob.endSample, total);
+            const midi = hzToMidi(blob.currentHz);
+            const y = midiToY(Math.round(midi));
+            const isSelected = selectedBlob && selectedBlob.id === blob.id;
+            const blobW = Math.max(x2 - x1, 4);
+
+            // Blob body — gradient orange→red like Melodyne
+            const grad = ctx.createLinearGradient(x1, y, x2, y + PE_ROW_H);
+            grad.addColorStop(0, isSelected ? '#ffd32a' : '#f0932b');
+            grad.addColorStop(0.5, isSelected ? '#ffdd59' : '#eb4d4b');
+            grad.addColorStop(1, isSelected ? '#f9ca24' : '#6f1e51');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(x1+1, y+1, blobW-2, PE_ROW_H-2, 3)
+                           : ctx.rect(x1+1, y+1, blobW-2, PE_ROW_H-2);
+            ctx.fill();
+
+            // Pitch drift curve inside blob
+            if (blob.drift && blob.drift.length > 1 && blobW > 10) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                blob.drift.forEach((d, i) => {
+                    const dx = x1 + (i / blob.drift.length) * blobW;
+                    const dy = y + PE_ROW_H/2 - Math.min(Math.max(d * 2, -PE_ROW_H/2+2), PE_ROW_H/2-2);
+                    i === 0 ? ctx.moveTo(dx, dy) : ctx.lineTo(dx, dy);
+                });
+                ctx.stroke();
+            }
+
+            // Confidence indicator
+            if (blob.confidence < 0.7) {
+                ctx.fillStyle = 'rgba(255,60,0,0.4)';
+                ctx.fillRect(x1+1, y+1, (1-blob.confidence)*blobW, 3);
+            }
+
+            // Note label
+            if (blobW > 30 && blob.currentHz > 0) {
+                const noteName = SEMITONES[Math.round(hzToMidi(blob.currentHz)) % 12];
+                const octave = Math.floor(Math.round(hzToMidi(blob.currentHz)) / 12) - 1;
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 9px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText(noteName + octave, x1 + 3, y + PE_ROW_H - 3);
+            }
+
+            // Selection outline
+            if (isSelected) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(x1+1, y+1, blobW-2, PE_ROW_H-2);
+            }
+        });
+
+        ctx.textAlign = 'left';
+    }
+
+    // --- Tool System ---
+    window.setPitchTool = function(tool) {
+        currentTool = tool;
+        document.querySelectorAll('.pitch-tool-btn[id^="ptool_"]').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById('ptool_' + tool);
+        if (btn) btn.classList.add('active');
+    };
+
+    // --- Scale Snap ---
+    window.updateScaleSnap = function() {
+        scaleSnap = document.getElementById('pitchScaleSnap').value;
+        const keys = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        rootKey = keys.indexOf(document.getElementById('pitchRootKey').value);
+        drawPitchEditor();
+    };
+
+    // --- Flatten Pitch (remove drift) ---
+    window.applyFlatten = function() {
+        if (!selectedBlob) { alert('একটি note blob সিলেক্ট করুন।'); return; }
+        savePitchUndo();
+        selectedBlob.drift = selectedBlob.drift.map(() => 0);
+        drawPitchEditor();
+        applyLivePitch();
+    };
+
+    // --- Controls ---
+    window.onPitchCtrl = function(key, val) {
+        pitchParams[key] = parseFloat(val);
+        const labels = { finetune: val+' ct', strength: val+'%', formant: parseFloat(val).toFixed(1)+' st', drift: val+'%', phase: val+'%', modulation: val+'%' };
+        document.getElementById('pval_' + key).innerText = labels[key] || val;
+        applyLivePitch();
+    };
+
+    window.updatePitchParams = function() {
+        preserveFormant = document.getElementById('preserveFormantToggle').checked;
+        applyLivePitch();
+    };
+
+    window.toggleAB = function() {
+        abMode = document.getElementById('abToggle').checked;
+        if (abMode) {
+            // Show original
+            const temp = pitchBlobs;
+            pitchBlobs = JSON.parse(JSON.stringify(abOriginalBlobs));
+            drawPitchEditor();
+            pitchBlobs = temp;
+        } else {
+            drawPitchEditor();
+        }
+    };
+
+    // --- Undo/Redo ---
+    function savePitchUndo() {
+        pitchUndoStack.push(JSON.parse(JSON.stringify(pitchBlobs)));
+        pitchRedoStack = [];
+    }
+    window.pitchUndo = function() {
+        if (!pitchUndoStack.length) return;
+        pitchRedoStack.push(JSON.parse(JSON.stringify(pitchBlobs)));
+        pitchBlobs = pitchUndoStack.pop();
+        selectedBlob = null;
+        drawPitchEditor();
+        applyLivePitch();
+    };
+    window.pitchRedo = function() {
+        if (!pitchRedoStack.length) return;
+        pitchUndoStack.push(JSON.parse(JSON.stringify(pitchBlobs)));
+        pitchBlobs = pitchRedoStack.pop();
+        selectedBlob = null;
+        drawPitchEditor();
+        applyLivePitch();
+    };
+    window.resetPitchEdits = function() {
+        savePitchUndo();
+        pitchBlobs = JSON.parse(JSON.stringify(abOriginalBlobs));
+        selectedBlob = null;
+        drawPitchEditor();
+        document.getElementById('pitchStatusLabel').innerText = 'Reset done';
+        applyLivePitch();
+    };
+
+    // --- Mouse/Touch drag on canvas ---
+    function getPitchEventPos(e) {
+        const rect = pitchCanvas.getBoundingClientRect();
+        const scaleX = pitchCanvas.width / rect.width;
+        const scaleY = pitchCanvas.height / rect.height;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    }
+
+    function findBlobAtPos(x, y) {
+        if (!vocalBuffer) return null;
+        const total = vocalBuffer.length;
+        const clickMidi = yToMidi(y);
+        return pitchBlobs.find(b => {
+            const x1 = sampleToX(b.startSample, total);
+            const x2 = sampleToX(b.endSample, total);
+            const bMidi = hzToMidi(b.currentHz);
+            return x >= x1 && x <= x2 && Math.abs(clickMidi - bMidi) < 0.7;
+        }) || null;
+    }
+
+    pitchCanvas.addEventListener('mousedown', (e) => {
+        const pos = getPitchEventPos(e);
+        const blob = findBlobAtPos(pos.x, pos.y);
+        if (blob && (currentTool === 'select' || currentTool === 'move')) {
+            savePitchUndo();
+            selectedBlob = blob;
+            dragStartY = pos.y;
+            dragStartHz = blob.currentHz;
+            isDraggingBlob = true;
+            const noteName = SEMITONES[Math.round(hzToMidi(blob.currentHz)) % 12];
+            document.getElementById('pitchStatusLabel').innerText = `Selected: ${noteName} (${blob.currentHz.toFixed(1)} Hz)`;
+        } else {
+            selectedBlob = null;
+        }
+        drawPitchEditor();
+        e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDraggingBlob || !selectedBlob) return;
+        const pos = getPitchEventPos(e);
+        const deltaMidi = (dragStartY - pos.y) / PE_ROW_H;
+        let newMidi = hzToMidi(dragStartHz) + deltaMidi;
+
+        // Scale snap
+        if (scaleSnap !== 'none') {
+            const intervals = SCALE_INTERVALS[scaleSnap];
+            if (intervals) {
+                const noteInOct = ((Math.round(newMidi) % 12) + 12) % 12;
+                const rootAdjusted = ((noteInOct - rootKey) % 12 + 12) % 12;
+                const closest = intervals.reduce((a, b) => Math.abs(b - rootAdjusted) < Math.abs(a - rootAdjusted) ? b : a);
+                newMidi = Math.floor(newMidi / 12) * 12 + rootKey + closest;
+            }
+        }
+
+        newMidi = Math.max(PE_MIN_NOTE, Math.min(PE_MAX_NOTE - 1, newMidi));
+        selectedBlob.currentHz = midiToHz(newMidi);
+
+        const noteName = SEMITONES[Math.round(newMidi) % 12];
+        const octave = Math.floor(Math.round(newMidi)/12) - 1;
+        const cents = Math.round((newMidi - Math.round(newMidi)) * 100);
+        document.getElementById('pitchStatusLabel').innerText = `${noteName}${octave} ${cents >= 0 ? '+' : ''}${cents}ct (${selectedBlob.currentHz.toFixed(1)} Hz)`;
+
+        drawPitchEditor();
+        applyLivePitch();
+    });
+
+    window.addEventListener('mouseup', () => { isDraggingBlob = false; });
+
+    // Touch support
+    pitchCanvas.addEventListener('touchstart', (e) => {
+        const pos = getPitchEventPos(e);
+        const blob = findBlobAtPos(pos.x, pos.y);
+        if (blob) {
+            savePitchUndo();
+            selectedBlob = blob;
+            dragStartY = pos.y;
+            dragStartHz = blob.currentHz;
+            isDraggingBlob = true;
+        } else { selectedBlob = null; }
+        drawPitchEditor();
+        e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+        if (!isDraggingBlob || !selectedBlob) return;
+        const pos = getPitchEventPos(e);
+        const deltaMidi = (dragStartY - pos.y) / PE_ROW_H;
+        let newMidi = Math.max(PE_MIN_NOTE, Math.min(PE_MAX_NOTE-1, hzToMidi(dragStartHz) + deltaMidi));
+        selectedBlob.currentHz = midiToHz(newMidi);
+        drawPitchEditor();
+        applyLivePitch();
+        e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => { isDraggingBlob = false; });
+
+    // --- Live Pitch Preview using AudioBuffer manipulation ---
+    let livePitchBuffer = null;
+    let liveRenderScheduled = false;
+
+    function applyLivePitch() {
+        if (!vocalBuffer || !pitchEditorReady) return;
+        if (liveRenderScheduled) return;
+        liveRenderScheduled = true;
+        setTimeout(() => {
+            liveRenderScheduled = false;
+            renderCorrectedBuffer().then(buf => {
+                livePitchBuffer = buf;
+                if (pitchPreviewPlaying) restartPitchPreview();
+            });
+        }, 80); // debounce 80ms
+    }
+
+    async function renderCorrectedBuffer() {
+        if (!vocalBuffer) return null;
+        const sr = vocalBuffer.sampleRate;
+        const totalSamples = vocalBuffer.length;
+        const offCtx = new OfflineAudioContext(vocalBuffer.numberOfChannels, totalSamples + sr, sr);
+
+        // Build corrected audio by processing each blob region
+        const src = offCtx.createBufferSource();
+
+        // Create a copy of the buffer with pitch-shifted regions
+        const outBuffer = offCtx.createBuffer(vocalBuffer.numberOfChannels, totalSamples, sr);
+
+        for (let ch = 0; ch < vocalBuffer.numberOfChannels; ch++) {
+            const inData = vocalBuffer.getChannelData(ch);
+            const outData = outBuffer.getChannelData(ch);
+
+            // Copy original
+            outData.set(inData);
+
+            // Apply pitch shifts per blob
+            pitchBlobs.forEach(blob => {
+                const ratio = blob.currentHz / blob.originalHz;
+                if (!isFinite(ratio) || ratio === 1) return;
+
+                // Fine tune offset
+                const fineTuneRatio = Math.pow(2, pitchParams.finetune / 1200);
+                const totalRatio = ratio * fineTuneRatio;
+                const strength = pitchParams.strength / 100;
+                const effectiveRatio = 1 + (totalRatio - 1) * strength;
+
+                // Simple phase-vocoder-style pitch shift on the blob region
+                const start = blob.startSample;
+                const end = blob.endSample;
+                const len = end - start;
+                if (len < 64) return;
+
+                const segment = inData.slice(start, end);
+                const shifted = simplePitchShift(segment, effectiveRatio, pitchParams.phase / 100);
+
+                // Cross-fade into output
+                const fadeLen = Math.min(64, Math.floor(len * 0.1));
+                for (let i = 0; i < len && start + i < totalSamples; i++) {
+                    let gain = 1;
+                    if (i < fadeLen) gain = i / fadeLen;
+                    else if (i > len - fadeLen) gain = (len - i) / fadeLen;
+                    const src_i = i < shifted.length ? shifted[i] : 0;
+                    outData[start + i] = outData[start + i] * (1 - strength * gain) + src_i * strength * gain;
+                }
+            });
+        }
+
+        src.buffer = outBuffer;
+        src.connect(offCtx.destination);
+        src.start(0);
+
+        try {
+            return await offCtx.startRendering();
+        } catch(e) { return vocalBuffer; }
+    }
+
+    // Simple time-domain pitch shift via resampling (fast, good enough for preview)
+    function simplePitchShift(samples, ratio, smoothness) {
+        if (!isFinite(ratio) || ratio <= 0) return samples;
+        const outLen = samples.length;
+        const out = new Float32Array(outLen);
+        const inLen = samples.length;
+        const smooth = Math.max(0.1, smoothness);
+
+        for (let i = 0; i < outLen; i++) {
+            const srcPos = i * ratio;
+            const idx = Math.floor(srcPos);
+            const frac = srcPos - idx;
+            if (idx + 1 < inLen) {
+                // Hermite interpolation for smoother result
+                const y0 = idx > 0 ? samples[idx-1] : samples[0];
+                const y1 = samples[idx];
+                const y2 = samples[idx+1];
+                const y3 = idx+2 < inLen ? samples[idx+2] : samples[inLen-1];
+                out[i] = hermite(frac, y0, y1, y2, y3);
+            } else if (idx < inLen) {
+                out[i] = samples[idx];
+            }
+        }
+        return out;
+    }
+
+    function hermite(t, y0, y1, y2, y3) {
+        const c0 = y1;
+        const c1 = 0.5 * (y2 - y0);
+        const c2 = y0 - 2.5 * y1 + 2 * y2 - 0.5 * y3;
+        const c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+        return ((c3 * t + c2) * t + c1) * t + c0;
+    }
+
+    // --- Pitch Preview Playback ---
+    window.togglePitchPreview = function() {
+        if (pitchPreviewPlaying) {
+            stopPitchPreview();
+        } else {
+            startPitchPreview();
+        }
+    };
+
+    function startPitchPreview() {
+        if (!livePitchBuffer && !vocalBuffer) return;
+        stopPitchPreview();
+        initAudioContext();
+        const buf = livePitchBuffer || vocalBuffer;
+        pitchPreviewCtx = audioCtx;
+        pitchPreviewSource = audioCtx.createBufferSource();
+        pitchPreviewSource.buffer = buf;
+        pitchPreviewSource.connect(audioCtx.destination);
+        pitchPreviewSource.start(0);
+        pitchPreviewPlaying = true;
+        document.getElementById('pitchPreviewBtn').innerText = '⏸ Stop Preview';
+        document.getElementById('pitchPlayStatus').innerText = '▶ Playing corrected vocal...';
+        pitchPreviewSource.onended = () => {
+            pitchPreviewPlaying = false;
+            document.getElementById('pitchPreviewBtn').innerText = '▶ Play Corrected Preview';
+            document.getElementById('pitchPlayStatus').innerText = '';
+        };
+    }
+
+    function stopPitchPreview() {
+        if (pitchPreviewSource) {
+            try { pitchPreviewSource.stop(); } catch(e) {}
+            pitchPreviewSource = null;
+        }
+        pitchPreviewPlaying = false;
+        document.getElementById('pitchPreviewBtn').innerText = '▶ Play Corrected Preview';
+        document.getElementById('pitchPlayStatus').innerText = '';
+    }
+
+    function restartPitchPreview() {
+        stopPitchPreview();
+        startPitchPreview();
+    }
+
+    // --- Export Corrected Audio ---
+    window.exportCorrectedAudio = function() {
+        if (!livePitchBuffer && !vocalBuffer) return;
+        const buf = livePitchBuffer || vocalBuffer;
+        const wav = audioBufferToWav(buf);
+        const d = new Date();
+        const ts = `${d.getFullYear()}${(d.getMonth()+1).toString().padStart(2,'0')}${d.getDate().toString().padStart(2,'0')}_${d.getHours().toString().padStart(2,'0')}${d.getMinutes().toString().padStart(2,'0')}`;
+        const name = prompt('ফাইলের নাম:', `Pitch_Corrected_${ts}`) || `Pitch_Corrected_${ts}`;
+        const reader = new FileReader();
+        reader.onload = function() {
+            const a = document.createElement('a');
+            a.href = reader.result;
+            a.download = name + '.wav';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => document.body.removeChild(a), 300);
+        };
+        reader.readAsDataURL(wav);
+    };
+
+    // Re-init if vocal buffer changes (polling)
+    setInterval(() => {
+        if (typeof vocalBuffer !== 'undefined' && vocalBuffer && !pitchEditorReady) {
+            initPitchEditor();
+        }
+    }, 1000);
+
+    })(); // end pitch editor IIFE
+</script>
+-e 
 </body>
 </html>
