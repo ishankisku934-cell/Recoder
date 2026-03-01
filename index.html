@@ -497,7 +497,7 @@
                 <div class="track-name" title="${track.name}">${index + 1}. ${track.name}</div>
                 <div class="track-controls">
                     <button class="track-play-btn" id="tpbtn_${index}" onclick="toggleTrackPreview(${index})">▶</button>
-                    <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" onchange="updateTrackVolume(${index}, this.value)" title="Track Volume">
+                    <input type="range" class="vol-slider" min="0" max="2" step="0.05" value="${track.volume}" oninput="updateTrackVolume(${index}, this.value)" title="Track Volume">
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'includeMix', this.checked)" ${track.includeMix ? 'checked' : ''}> In Mix</label>
                     <label class="checkbox-label"><input type="checkbox" onchange="updateTrack(${index}, 'applyFx', this.checked)" ${track.applyFx ? 'checked' : ''}> Apply FX</label>
                     <button style="padding: 2px 8px; margin: 0; font-size: 12px; background: #ff3f34;" onclick="removeTrack(${index})">X</button>
@@ -508,7 +508,14 @@
     }
 
     window.updateTrack = (index, prop, value) => { backingTracks[index][prop] = value; };
-    window.updateTrackVolume = (index, val) => { backingTracks[index].volume = parseFloat(val); };
+    window.updateTrackVolume = (index, val) => {
+        const v = parseFloat(val);
+        backingTracks[index].volume = v;
+        // Real-time update: recording চলাকালীন বা individual preview চলাকালীন
+        if (backingTracks[index].liveGainNode) {
+            backingTracks[index].liveGainNode.gain.setTargetAtTime(v, audioCtx.currentTime, 0.02);
+        }
+    };
     window.removeTrack = (index) => { backingTracks.splice(index, 1); renderTrackList(); updateTransportDuration(); };
 
     // 2. Start Raw Recording
@@ -574,11 +581,12 @@
                 
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.value = track.volume;
+                track.liveGainNode = gainNode; // ← live reference রাখি
                 
                 src.connect(gainNode);
                 gainNode.connect(audioCtx.destination);
                 
-                src.start(0, seekOffsetSeconds); // ← seekOffset থেকে শুরু
+                src.start(0, seekOffsetSeconds);
                 previewSources.push(src);
             });
             // Transport animation during recording
@@ -601,6 +609,7 @@
         // Stop playing backing tracks
         previewSources.forEach(src => { try { src.stop(); } catch(e){} });
         previewSources = [];
+        backingTracks.forEach(t => { t.liveGainNode = null; }); // ← clear references
         stopTransportAnim();
 
         if (micStream) micStream.getTracks().forEach(track => track.stop());
@@ -1294,6 +1303,10 @@
             try { trackPreviewSource.stop(); } catch(e) {}
             trackPreviewSource = null;
         }
+        // Clear liveGainNode for the previewing track
+        if (trackPreviewIndex >= 0 && backingTracks[trackPreviewIndex]) {
+            backingTracks[trackPreviewIndex].liveGainNode = null;
+        }
         stopTransportAnim();
         // Reset all play buttons
         document.querySelectorAll('.track-play-btn').forEach(b => {
@@ -1322,6 +1335,7 @@
 
         const gainNode = audioCtx.createGain();
         gainNode.gain.value = track.volume;
+        track.liveGainNode = gainNode; // ← individual preview-এও live reference
         src.connect(gainNode);
         gainNode.connect(audioCtx.destination);
 
