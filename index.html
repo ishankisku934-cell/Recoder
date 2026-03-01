@@ -2135,13 +2135,30 @@
         if (!vocalBuffer) return null;
         const total = vocalBuffer.length;
         const clickMidi = yToMidi(y);
-        return pitchBlobs.find(b => {
+        // First try exact hit
+        let found = pitchBlobs.find(b => {
             const x1 = sampleToX(b.startSample, total);
             const x2 = sampleToX(b.endSample, total);
             const bMidi = hzToMidi(b.currentHz);
-            return x >= x1 && x <= x2 && Math.abs(clickMidi - bMidi) < 0.7;
-        }) || null;
+            return x >= x1 && x <= x2 && Math.abs(clickMidi - bMidi) < 0.8;
+        });
+        if (found) return found;
+        // Fallback: find nearest blob within 2 semitones (forgiving for small blobs)
+        let nearest = null, nearestDist = Infinity;
+        pitchBlobs.forEach(b => {
+            const x1 = sampleToX(b.startSample, total);
+            const x2 = sampleToX(b.endSample, total);
+            if (x < x1 - 8 || x > x2 + 8) return;
+            const bMidi = hzToMidi(b.currentHz);
+            const dist = Math.abs(clickMidi - bMidi);
+            if (dist < 2.0 && dist < nearestDist) { nearestDist = dist; nearest = b; }
+        });
+        return nearest;
     }
+
+    // --- Raw client Y tracking for reliable drag ---
+    let dragLastClientY = 0;  // raw window clientY from last event
+    let dragCurrentMidi = 0;  // current midi value being dragged
 
     pitchCanvas.addEventListener('mousedown', (e) => {
         const pos = getPitchEventPos(e);
@@ -2149,10 +2166,10 @@
         if (blob && (currentTool === 'select' || currentTool === 'move')) {
             savePitchUndo();
             selectedBlob = blob;
-            dragStartY = pos.y;
-            dragStartHz = blob.currentHz;
+            dragLastClientY = e.clientY;          // raw clientY — no canvas transform needed
+            dragCurrentMidi = hzToMidi(blob.currentHz);
             isDraggingBlob = true;
-            const noteName = SEMITONES[Math.round(hzToMidi(blob.currentHz)) % 12];
+            const noteName = SEMITONES[Math.round(dragCurrentMidi) % 12];
             document.getElementById('pitchStatusLabel').innerText = `Selected: ${noteName} (${blob.currentHz.toFixed(1)} Hz)`;
         } else {
             selectedBlob = null;
@@ -2163,12 +2180,20 @@
 
     window.addEventListener('mousemove', (e) => {
         if (!isDraggingBlob || !selectedBlob) return;
-        const pos = getPitchEventPos(e);
-        // Sensitivity: slider 1=raw (1px=1/14 semitone), 20=very slow (1px=1/280 semitone)
+
         const sens = parseFloat((document.getElementById('pitchSensitivity') || {value:4}).value);
-        const pixelsPerSemitone = PE_ROW_H * sens;
-        const deltaMidi = (dragStartY - pos.y) / pixelsPerSemitone;
-        let newMidi = hzToMidi(dragStartHz) + deltaMidi;
+        // pixels per semitone in screen space (not canvas space)
+        const rect = pitchCanvas.getBoundingClientRect();
+        const screenRowH = (rect.height / pitchCanvas.height) * PE_ROW_H;
+        const pixelsPerSemitone = screenRowH * sens;
+
+        // Incremental delta from LAST position — accumulated into dragCurrentMidi
+        const deltaClientY = dragLastClientY - e.clientY;
+        dragLastClientY = e.clientY;
+        const deltaMidi = deltaClientY / pixelsPerSemitone;
+        dragCurrentMidi += deltaMidi;
+
+        let newMidi = dragCurrentMidi;
 
         // Scale snap
         if (scaleSnap !== 'none') {
@@ -2186,14 +2211,18 @@
 
         const noteName = SEMITONES[Math.round(newMidi) % 12];
         const octave = Math.floor(Math.round(newMidi)/12) - 1;
-        const cents = Math.round((newMidi - Math.round(newMidi)) * 100);
+        const cents = Math.round((dragCurrentMidi - Math.round(dragCurrentMidi)) * 100);
         document.getElementById('pitchStatusLabel').innerText = `${noteName}${octave} ${cents >= 0 ? '+' : ''}${cents}ct (${selectedBlob.currentHz.toFixed(1)} Hz)`;
 
         drawPitchEditor();
         applyLivePitch();
     });
 
-    window.addEventListener('mouseup', () => { isDraggingBlob = false; });
+    window.addEventListener('mouseup', () => {
+        isDraggingBlob = false;
+        // Sync dragCurrentMidi to actual blob state so next drag starts clean
+        if (selectedBlob) dragCurrentMidi = hzToMidi(selectedBlob.currentHz);
+    });
 
     // Touch support
     pitchCanvas.addEventListener('touchstart', (e) => {
@@ -2202,8 +2231,8 @@
         if (blob) {
             savePitchUndo();
             selectedBlob = blob;
-            dragStartY = pos.y;
-            dragStartHz = blob.currentHz;
+            dragLastClientY = e.touches[0].clientY;
+            dragCurrentMidi = hzToMidi(blob.currentHz);
             isDraggingBlob = true;
         } else { selectedBlob = null; }
         drawPitchEditor();
@@ -2212,18 +2241,27 @@
 
     window.addEventListener('touchmove', (e) => {
         if (!isDraggingBlob || !selectedBlob) return;
-        const pos = getPitchEventPos(e);
+
         const sens = parseFloat((document.getElementById('pitchSensitivity') || {value:4}).value);
-        const pixelsPerSemitone = PE_ROW_H * sens;
-        const deltaMidi = (dragStartY - pos.y) / pixelsPerSemitone;
-        let newMidi = Math.max(PE_MIN_NOTE, Math.min(PE_MAX_NOTE-1, hzToMidi(dragStartHz) + deltaMidi));
+        const rect = pitchCanvas.getBoundingClientRect();
+        const screenRowH = (rect.height / pitchCanvas.height) * PE_ROW_H;
+        const pixelsPerSemitone = screenRowH * sens;
+
+        const deltaClientY = dragLastClientY - e.touches[0].clientY;
+        dragLastClientY = e.touches[0].clientY;
+        dragCurrentMidi += deltaClientY / pixelsPerSemitone;
+
+        let newMidi = Math.max(PE_MIN_NOTE, Math.min(PE_MAX_NOTE-1, dragCurrentMidi));
         selectedBlob.currentHz = midiToHz(newMidi);
         drawPitchEditor();
         applyLivePitch();
         e.preventDefault();
     }, { passive: false });
 
-    window.addEventListener('touchend', () => { isDraggingBlob = false; });
+    window.addEventListener('touchend', () => {
+        isDraggingBlob = false;
+        if (selectedBlob) dragCurrentMidi = hzToMidi(selectedBlob.currentHz);
+    });
 
     // --- Live Pitch Preview using AudioBuffer manipulation ---
     let livePitchBuffer = null;
